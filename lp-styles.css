@@ -85,6 +85,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; margin: 0; text-wrap
   display: inline-flex; align-items: center; justify-content: center; gap: 9px;
   font-family: var(--body); font-weight: 700; font-size: 15px; letter-spacing: .03em;
   border-radius: 999px; padding: 15px 28px; cursor: pointer; border: 1px solid transparent;
+  white-space: nowrap;
   transition: transform .14s ease, box-shadow .2s ease, background .2s ease;
 }
 .btn:active { transform: scale(.97); }
@@ -117,7 +118,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; margin: 0; text-wrap
   border-bottom: 1px solid var(--line-soft);
 }
 .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 66px; }
-.brand { display: inline-flex; align-items: center; gap: 9px;
+.brand { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap;
   font-family: var(--display); font-weight: 900; font-size: 18px; letter-spacing: .26em; text-indent: .26em; }
 .brand .star { color: var(--gold); font-size: 14px; letter-spacing: 0; text-indent: 0; }
 .nav-links { display: flex; align-items: center; gap: 30px; }
@@ -125,6 +126,11 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; margin: 0; text-wrap
 .nav-links a:hover { color: var(--ink); }
 .nav-cta { display: flex; align-items: center; gap: 14px; }
 @media (max-width: 760px) { .nav-links { display: none; } }
+@media (max-width: 480px) {
+  .brand { font-size: 16px; letter-spacing: .12em; text-indent: .12em; }
+  .nav-cta { gap: 8px; }
+  .nav-cta .btn--sm { padding: 8px 12px; font-size: 12px; }
+}
 
 /* ── カード/グリッド ───────────────────────── */
 .grid { display: grid; gap: 22px; }

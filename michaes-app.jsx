@@ -59,6 +59,40 @@ function prettyUrl(url) {
 
 function clip(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
 
+// ── 埋込みプレイヤー判定（URLから埋込みURL＋高さを生成。対応外はnull） ──
+function embedFor(it) {
+  if (!it || it.kind !== 'link' || !it.url) return null;
+  let u;
+  try { u = new URL(it.url); } catch (e) { return null; }
+  const host = u.hostname.replace(/^www\./, '').replace(/^m\./, '');
+  // YouTube（ミルの動画）
+  if (host === 'youtube.com' || host === 'youtu.be' || host === 'music.youtube.com') {
+    let id = '';
+    if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0];
+    else if (u.pathname.startsWith('/shorts/')) id = u.pathname.split('/')[2] || '';
+    else if (u.pathname.startsWith('/embed/')) id = u.pathname.split('/')[2] || '';
+    else id = u.searchParams.get('v') || '';
+    if (/^[A-Za-z0-9_-]{6,}$/.test(id)) return { kind: 'youtube', src: 'https://www.youtube.com/embed/' + id, ratio: true };
+    return null;
+  }
+  // Spotify
+  if (host === 'open.spotify.com') {
+    const m = u.pathname.match(/^\/(?:intl-[a-z]+\/)?(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]+)/);
+    if (m) return { kind: 'spotify', src: 'https://open.spotify.com/embed/' + m[1] + '/' + m[2], height: m[1] === 'track' || m[1] === 'episode' ? 152 : 352 };
+    return null;
+  }
+  // Apple Music（ホストをembed.music.apple.comに差替え、path+searchは維持）
+  if (host === 'music.apple.com' || host === 'embed.music.apple.com') {
+    return { kind: 'applemusic', src: 'https://embed.music.apple.com' + u.pathname + u.search, height: 175 };
+  }
+  // SoundCloud
+  if (host === 'soundcloud.com') {
+    const clean = 'https://soundcloud.com' + u.pathname;
+    return { kind: 'soundcloud', src: 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(clean) + '&color=%23FF7D5E&auto_play=false&show_user=true', height: 166 };
+  }
+  return null;
+}
+
 // ── エクスポート（JSON書き出し） ─────────────────
 function dateStamp() {
   const d = new Date(); const p = (n) => String(n).padStart(2, '0');
@@ -99,6 +133,42 @@ function downloadBlob(filename, blob) {
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch (e) {} }, 0);
+}
+
+// ── インポート（書き出したJSONから戻す） ──
+function dataURLtoBlob(dataURL) {
+  const comma = dataURL.indexOf(',');
+  const head = dataURL.slice(0, comma);
+  const mime = (head.match(/data:([^;]+)/) || [])[1] || 'image/png';
+  const bin = atob(dataURL.slice(comma + 1));
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+// 重複判定の署名（同じものを二重に取り込まない）
+function itemSig(it) {
+  if (it.kind === 'link') return 'L:' + it.url;
+  if (it.kind === 'image') return 'I:' + (it.at || '');
+  return (it.kind || 'T') + ':' + (it.text || '');
+}
+// エクスポートJSON → 棚オブジェクト（画像はBlob＋object URLに復元）
+function parseImport(payload) {
+  if (!payload || payload.app !== 'MichaeS' || !payload.shelves || typeof payload.shelves !== 'object') return null;
+  const out = {};
+  Object.keys(payload.shelves).forEach((k) => {
+    if (!Array.isArray(payload.shelves[k])) return;
+    out[k] = payload.shelves[k].map((it) => {
+      if (it && it.kind === 'image' && it.data) {
+        try {
+          const blob = dataURLtoBlob(it.data);
+          return { kind: 'image', who: it.who, at: it.at, blob, src: URL.createObjectURL(blob) };
+        } catch (e) { return { kind: 'image', who: it.who, at: it.at }; }
+      }
+      const c = {}; for (const p in it) { if (p !== 'data') c[p] = it[p]; }
+      return c;
+    });
+  });
+  return out;
 }
 
 // 実機判定：実機/PWAでは試作用iPhoneフレーム(IOSDevice)を外して全画面で描く。
@@ -242,6 +312,7 @@ function ShelfPage({ verbId, items, onBack, onDelete }) {
   const [sel, setSel] = useState([]);          // 選択中のindex
   const [confirm, setConfirm] = useState(false);
   const [note, setNote] = useState('');
+  const [viewer, setViewer] = useState(null);  // 画像の全画面ビューア
   const lp = useRef({ timer: null, fired: false });
   const noteTimer = useRef(null);
   useEffect(() => () => { clearTimeout(lp.current.timer); clearTimeout(noteTimer.current); }, []);
@@ -280,23 +351,16 @@ function ShelfPage({ verbId, items, onBack, onDelete }) {
   };
   const pressEnd = () => clearTimeout(lp.current.timer);
 
-  const openItem = (it) => {
-    if (it.kind === 'link') {
-      try {
-        const w = window.open(it.url, '_blank', 'noopener');
-        if (!w) window.location.href = it.url;
-      } catch (e) { window.location.href = it.url; }
-      flash('開いた');
-    } else {
-      copyItem(it); // リンク以外（テキスト/画像）はコピー
-    }
-  };
-
-  const tapItem = (i) => {
-    if (lp.current.fired) { lp.current.fired = false; return; } // 長押し直後のclickを無効化
+  // タップ共通：長押し直後は無効、選択モードなら選択トグル、それ以外はfnを実行
+  const actTap = (i, fn) => {
+    if (lp.current.fired) { lp.current.fired = false; return; }
     if (selMode) { toggle(i); return; }
-    if (verbId === 'miru' || verbId === 'kiku') openItem(items[i]);
-    else copyItem(items[i]);
+    fn();
+  };
+  const openURL = (it) => {
+    try { const w = window.open(it.url, '_blank', 'noopener'); if (!w) window.location.href = it.url; }
+    catch (e) { window.location.href = it.url; }
+    flash('開いた');
   };
 
   const allSelected = items.length > 0 && sel.length === items.length;
@@ -319,7 +383,7 @@ function ShelfPage({ verbId, items, onBack, onDelete }) {
           <span className="shelf-count">{selMode ? sel.length + ' / ' + items.length : items.length}</span>
         </div>
         <p className="shelf-sub">{selMode ? '選んで、まとめて手放せる' : meta.sub}</p>
-        {!selMode && items.length > 0 ? <p className="shelf-hint">{(verbId === 'miru' || verbId === 'kiku') ? 'タップで開く ・ 長押しで選択' : 'タップでコピー ・ 長押しで選択'}</p> : null}
+        {!selMode && items.length > 0 ? <p className="shelf-hint">タイトルで開く ・ 長押しで選択</p> : null}
       </header>
       <div className="shelf-list">
         {items.length === 0 ? (
@@ -330,15 +394,11 @@ function ShelfPage({ verbId, items, onBack, onDelete }) {
         ) : (
           items.map((it, i) => {
             const isSel = sel.indexOf(i) >= 0;
+            const emb = !selMode ? embedFor(it) : null;
             return (
-              <button
-                className={'shelf-item' + (selMode ? ' sel-mode' : '') + (isSel ? ' selected' : '')}
+              <div
+                className={'shelf-item' + (selMode ? ' sel-mode' : '') + (isSel ? ' selected' : '') + (emb ? ' has-embed' : '')}
                 key={i}
-                onClick={() => tapItem(i)}
-                onPointerDown={() => pressStart(i)}
-                onPointerUp={pressEnd}
-                onPointerLeave={pressEnd}
-                onPointerCancel={pressEnd}
                 onContextMenu={(e) => e.preventDefault()}
               >
                 {selMode ? (
@@ -355,17 +415,42 @@ function ShelfPage({ verbId, items, onBack, onDelete }) {
                   <span>{ageText(it.at)}</span>
                   {it.who && it.who !== 'あとで決める' ? <span className="who-tag">{it.who}</span> : null}
                 </div>
-                {it.kind === 'image'
-                  ? <img className="shelf-thumb" src={it.src} alt="" />
-                  : (
-                    <React.Fragment>
-                      <div className="shelf-item-title">{shelfTitle(it)}</div>
-                      {it.kind === 'link' && it.thumb
-                        ? <img className="shelf-thumb" src={it.thumb} alt="" loading="lazy" onError={(e) => { e.target.style.display = 'none'; }} />
-                        : null}
-                    </React.Fragment>
-                  )}
-              </button>
+
+                {/* メディア部 */}
+                {emb ? (
+                  <div className={'embed-wrap embed-' + emb.kind} style={emb.ratio ? null : { height: emb.height + 'px' }}>
+                    <iframe
+                      src={emb.src} title={shelfTitle(it)} loading="lazy" frameBorder="0"
+                      allow="autoplay; encrypted-media; clipboard-write; picture-in-picture; fullscreen"
+                      allowFullScreen
+                    ></iframe>
+                  </div>
+                ) : it.kind === 'image' ? (
+                  <img className="shelf-thumb" src={it.src} alt=""
+                    onClick={() => actTap(i, () => setViewer(it))}
+                    onPointerDown={() => pressStart(i)} onPointerUp={pressEnd} onPointerLeave={pressEnd} onPointerCancel={pressEnd} />
+                ) : (it.kind === 'link' && it.thumb) ? (
+                  <img className="shelf-thumb" src={it.thumb} alt="" loading="lazy"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                    onClick={() => actTap(i, () => openURL(it))}
+                    onPointerDown={() => pressStart(i)} onPointerUp={pressEnd} onPointerLeave={pressEnd} onPointerCancel={pressEnd} />
+                ) : null}
+
+                {/* タイトル部（画像以外）：タップで外部/コピー、長押しで選択 */}
+                {it.kind !== 'image' ? (
+                  <button
+                    className="shelf-item-title-btn"
+                    onClick={() => actTap(i, () => (it.kind === 'link' ? openURL(it) : copyItem(it)))}
+                    onPointerDown={() => pressStart(i)} onPointerUp={pressEnd} onPointerLeave={pressEnd} onPointerCancel={pressEnd}
+                  >
+                    <span className="shelf-item-title">{shelfTitle(it)}</span>
+                    {it.kind === 'link' ? <span className="open-ext" aria-hidden="true">↗</span> : null}
+                  </button>
+                ) : null}
+
+                {/* 選択モード：全体オーバーレイでタップ＝選択（埋込みの操作を遮る） */}
+                {selMode ? <button className="sel-overlay" onClick={() => toggle(i)} aria-label="選ぶ"></button> : null}
+              </div>
             );
           })
         )}
@@ -396,6 +481,14 @@ function ShelfPage({ verbId, items, onBack, onDelete }) {
           <span className="home-label">ホームへ</span>
         </div>
       )}
+
+      {/* 画像の全画面ビューア（タップで閉じる） */}
+      {viewer ? (
+        <div className="viewer" onClick={() => setViewer(null)}>
+          <img className="viewer-img" src={viewer.src} alt="" />
+          <button className="viewer-close" onClick={() => setViewer(null)} aria-label="閉じる">×</button>
+        </div>
+      ) : null}
 
       {/* 削除確認ダイアログ（必須） */}
       {confirm ? (
@@ -451,6 +544,10 @@ function App() {
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     const store = window.MichaeSStore;
+    // テーマ適用（設定を一度も開いていなくても効くよう、起動時に反映。既定=自動でOS追従）
+    const applyTheme = (t) => { try { document.documentElement.setAttribute('data-theme', { '自動': 'auto', 'ライト': 'light', 'ダーク': 'dark' }[t] || 'auto'); } catch (e) {} };
+    if (store && store.loadSettings) store.loadSettings().then((s) => applyTheme(s && s.theme)).catch(() => applyTheme('自動'));
+    else applyTheme('自動');
     if (!store) { setHydrated(true); return; }
     store.load()
       .then((s) => { if (s && Object.keys(s).length) setShelves(s); })
@@ -461,29 +558,72 @@ function App() {
     if (hydrated && window.MichaeSStore) window.MichaeSStore.save(shelves);
   }, [shelves, hydrated]);
 
+  // 賞味期限リマインドの登録/解除（既に通知許可済みの時だけ。プロンプトは出さない）
+  const getExistingSub = async () => {
+    try {
+      if (!('serviceWorker' in navigator) || typeof Notification === 'undefined' || Notification.permission !== 'granted') return null;
+      const reg = await navigator.serviceWorker.ready;
+      return await reg.pushManager.getSubscription();
+    } catch (e) { return null; }
+  };
+  const registerReminder = async (item) => {
+    if (!window.MICHAES_PUSH_ENDPOINT || !item || item.kind !== 'link' || !item.expireAt) return;
+    const sub = await getExistingSub();
+    if (!sub) return;
+    // 「○日前」設定を読む（既定3日前）
+    let daysBefore = 3;
+    try {
+      const st = window.MichaeSStore;
+      const s = st && st.loadSettings ? await st.loadSettings() : null;
+      const map = { '当日': 0, '前日': 1, '3日前': 3, '1週間前': 7 };
+      if (s && s.remindDays && map[s.remindDays] !== undefined) daysBefore = map[s.remindDays];
+    } catch (e) {}
+    try {
+      await fetch(window.MICHAES_PUSH_ENDPOINT + '/remind', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON ? sub.toJSON() : sub, url: item.url, expireAt: item.expireAt, daysBefore: daysBefore, title: item.label || item.url }),
+      });
+    } catch (e) {}
+  };
+  const unregisterReminder = async (item) => {
+    if (!window.MICHAES_PUSH_ENDPOINT || !item || item.kind !== 'link' || !item.expireAt) return;
+    const sub = await getExistingSub();
+    if (!sub) return;
+    try {
+      await fetch(window.MICHAES_PUSH_ENDPOINT + '/unremind', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: sub.endpoint, url: item.url }),
+      });
+    } catch (e) {}
+  };
+
   // メタが届いたら：表示中カードと、もう棚に入った同URLアイテムの両方を更新
   // （棚の更新はsave効果で自動的にIndexedDBへも反映される）
   const applyMeta = (url, meta) => {
-    if (!meta || (!meta.title && !meta.image)) return;
+    if (!meta || (!meta.title && !meta.image && !meta.expireAt)) return;
     setCurrent((c) =>
       c && c.kind === 'link' && c.url === url
-        ? { ...c, label: c.label || meta.title || undefined, thumb: c.thumb || meta.image || undefined }
+        ? { ...c, label: c.label || meta.title || undefined, thumb: c.thumb || meta.image || undefined, expireAt: c.expireAt || meta.expireAt || undefined }
         : c
     );
+    let needReminder = false;
     setShelves((p) => {
       let changed = false;
       const next = {};
       Object.keys(p).forEach((k) => {
         next[k] = p[k].map((it) => {
-          if (it.kind === 'link' && it.url === url && (!it.label || !it.thumb)) {
+          if (it.kind === 'link' && it.url === url && (!it.label || !it.thumb || (meta.expireAt && !it.expireAt))) {
             changed = true;
-            return { ...it, label: it.label || meta.title || undefined, thumb: it.thumb || meta.image || undefined };
+            if (meta.expireAt && !it.expireAt) needReminder = true;
+            return { ...it, label: it.label || meta.title || undefined, thumb: it.thumb || meta.image || undefined, expireAt: it.expireAt || meta.expireAt || undefined };
           }
           return it;
         });
       });
       return changed ? next : p;
     });
+    // 棚にある同URLが期限を得たら、X日前リマインドを登録（未ソートのカードには付けない）
+    if (needReminder) registerReminder({ kind: 'link', url, expireAt: meta.expireAt, label: meta.title || url });
   };
 
   const paste = async () => {
@@ -519,7 +659,9 @@ function App() {
   };
 
   const sortTo = (v, who) => {
-    setShelves((p) => ({ ...p, [v.id]: [...(p[v.id] || []), { ...current, who, at: Date.now() }] }));
+    const item = { ...current, who, at: Date.now() };
+    setShelves((p) => ({ ...p, [v.id]: [...(p[v.id] || []), item] }));
+    if (item.kind === 'link' && item.expireAt) registerReminder(item);
     setAnimVerb(v.id);
     setPhase('anim');
     const suffix = who && who !== 'あとで決める' ? ' — ' + who + 'に' : '';
@@ -543,7 +685,9 @@ function App() {
 
   const deleteFromShelf = (verbId, idxs) => {
     const set = new Set(idxs);
+    const removed = (shelves[verbId] || []).filter((_, i) => set.has(i));
     setShelves((p) => ({ ...p, [verbId]: (p[verbId] || []).filter((_, i) => !set.has(i)) }));
+    removed.forEach((it) => { if (it.kind === 'link' && it.expireAt) unregisterReminder(it); });
   };
 
   const screenStyle = {
@@ -695,6 +839,20 @@ function App() {
                 const n = Object.values(payload.shelves).reduce((a, arr) => a + arr.length, 0);
                 downloadBlob('michaes-export-' + dateStamp() + '.json', new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
                 return n;
+              }}
+              onImport={async (payload) => {
+                const incoming = parseImport(payload);
+                if (!incoming) throw new Error('format');
+                const next = { ...shelves };
+                let added = 0;
+                Object.keys(incoming).forEach((k) => {
+                  const cur = next[k] ? next[k].slice() : [];
+                  const seen = new Set(cur.map(itemSig));
+                  incoming[k].forEach((it) => { const s = itemSig(it); if (!seen.has(s)) { cur.push(it); seen.add(s); added++; } });
+                  next[k] = cur;
+                });
+                setShelves(next);
+                return added;
               }} />
           )}
         </div>

@@ -130,12 +130,13 @@ function Fold({ title, children }) {
 
 const cycleNext = (list, v) => list[(list.indexOf(v) + 1) % list.length];
 
-function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, openPremium }) {
+function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, openPremium }) {
   const { useState, useRef, useEffect } = React;
   // コア
   const [resurface, setResurface] = useState(true);
   const [perDay, setPerDay] = useState('おまかせ');
   const [notifWindow, setNotifWindow] = useState('深夜帯');
+  const [remindDays, setRemindDays] = useState('3日前');
   const [pasteOnOpen, setPasteOnOpen] = useState(true);
   const [fortuneOn, setFortuneOn] = useState(true);
   const [fortuneTime, setFortuneTime] = useState('朝 8時ごろ');
@@ -143,6 +144,7 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, openPremium })
   const [shareBtn, setShareBtn] = useState(true);
   const [screenshotPull, setScreenshotPull] = useState(false);
   const [fontSize, setFontSize] = useState('標準');
+  const [theme, setTheme] = useState('自動');
   const [layoutType, setLayoutType] = useState('標準');
   // UI
   const [premium, setPremium] = useState(!!openPremium);   // アップグレードシート（LP着地時は開いて出る）
@@ -150,6 +152,7 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, openPremium })
   const [banner, setBanner] = useState(null);      // 占い通知プレビュー
   const [note, setNote] = useState('');
   const timers = useRef([]);
+  const importRef = useRef(null);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   const later = (fn, ms) => timers.current.push(setTimeout(fn, ms));
 
@@ -163,12 +166,14 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, openPremium })
         if (typeof s.resurface === 'boolean') setResurface(s.resurface);
         if (s.perDay) setPerDay(s.perDay);
         if (s.notifWindow) setNotifWindow(s.notifWindow);
+        if (s.remindDays) setRemindDays(s.remindDays);
         if (typeof s.pasteOnOpen === 'boolean') setPasteOnOpen(s.pasteOnOpen);
         if (typeof s.fortuneOn === 'boolean') setFortuneOn(s.fortuneOn);
         if (s.fortuneTime) setFortuneTime(s.fortuneTime);
         if (typeof s.shareBtn === 'boolean') setShareBtn(s.shareBtn);
         if (typeof s.screenshotPull === 'boolean') setScreenshotPull(s.screenshotPull);
         if (s.fontSize) setFontSize(s.fontSize);
+        if (s.theme) setTheme(s.theme);
         if (s.layoutType) setLayoutType(s.layoutType);
       }
     }).catch(() => {}).then(() => setHyd(true));
@@ -177,9 +182,14 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, openPremium })
     if (!hyd) return;
     const st = window.MichaeSStore;
     if (st && st.saveSettings) {
-      st.saveSettings({ resurface, perDay, notifWindow, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, fontSize, layoutType });
+      st.saveSettings({ resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, fontSize, theme, layoutType });
     }
-  }, [hyd, resurface, perDay, notifWindow, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, fontSize, layoutType]);
+  }, [hyd, resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, fontSize, theme, layoutType]);
+
+  // テーマ適用（自動=OS追従／ライト／ダーク）
+  useEffect(() => {
+    try { document.documentElement.setAttribute('data-theme', { '自動': 'auto', 'ライト': 'light', 'ダーク': 'dark' }[theme] || 'auto'); } catch (e) {}
+  }, [theme]);
 
   const flash = (m) => {
     setNote(m);
@@ -195,6 +205,77 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, openPremium })
     if (window.MICHAES_PUSH_ENDPOINT && window.MICHAES_VAPID_PUBLIC) {
       scheduleBackgroundPush(msg);
     }
+  };
+
+  // ── Push購読の共通取得（許可→購読） ──
+  const ensureSubscription = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
+      flash('この端末はPush非対応'); return null;
+    }
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { flash('通知が許可されなかった'); return null; }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8(window.MICHAES_VAPID_PUBLIC),
+      });
+    }
+    return sub;
+  };
+
+  // 配信時間帯 → JST時（Workerの許可値と一致）
+  const SLOT_HOUR = { '朝 8時ごろ': 8, '昼 12時ごろ': 12, '夜 21時ごろ': 21 };
+
+  // 毎日配信の登録（ON時・時間帯変更時）
+  const registerDaily = async (timeLabel) => {
+    if (!window.MICHAES_PUSH_ENDPOINT || !window.MICHAES_VAPID_PUBLIC) { flash('配信先が未設定'); return false; }
+    try {
+      const sub = await ensureSubscription();
+      if (!sub) return false;
+      const r = await fetch(window.MICHAES_PUSH_ENDPOINT + '/subscribe', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON ? sub.toJSON() : sub, hour: SLOT_HOUR[timeLabel] || 8 }),
+      });
+      return r.ok;
+    } catch (e) { return false; }
+  };
+
+  // 毎日配信の解除（OFF時）
+  const unregisterDaily = async () => {
+    if (!window.MICHAES_PUSH_ENDPOINT) return;
+    try {
+      if (!('serviceWorker' in navigator)) return;
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch(window.MICHAES_PUSH_ENDPOINT + '/unsubscribe', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+      }
+    } catch (e) {}
+  };
+
+  // 配信トグル
+  const onFortuneToggle = async (next) => {
+    if (next) {
+      const okReg = await registerDaily(fortuneTime);
+      if (okReg) { setFortuneOn(true); flash('毎朝の配信をオンにした ✦'); }
+      else { setFortuneOn(false); /* ensureSubscription側でflash済み */ }
+    } else {
+      setFortuneOn(false);
+      unregisterDaily();
+      flash('配信をオフにした');
+    }
+  };
+
+  // 配信時間帯の変更（ON中なら再登録）
+  const onFortuneTimeChange = () => {
+    const nextTime = cycleNext(['朝 8時ごろ', '昼 12時ごろ', '夜 21時ごろ'], fortuneTime);
+    setFortuneTime(nextTime);
+    if (fortuneOn) registerDaily(nextTime);
   };
 
   const scheduleBackgroundPush = async (msg) => {
@@ -262,6 +343,9 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, openPremium })
           <SetRow label="通知の時間帯" onClick={() => setNotifWindow(cycleNext(['深夜帯', '通勤帯', 'いつでも'], notifWindow))}>
             <span className="val-chip">{notifWindow}</span>
           </SetRow>
+          <SetRow label="賞味期限の通知" sub="期限つきリンクの何日前に知らせるか" onClick={() => setRemindDays(cycleNext(['当日', '前日', '3日前', '1週間前'], remindDays))}>
+            <span className="val-chip">{remindDays}</span>
+          </SetRow>
           <SetRow label="詳細ルール" sub="感覚 × 時間帯 × 場所 × イヤホン" locked onClick={() => setPremium(true)}>
             <span className="val-chip dim">プレミアム</span>
           </SetRow>
@@ -286,10 +370,10 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, openPremium })
 
         <SetGroup title="今日の占い">
           <SetRow label="配信" sub="1日1回、通知だけ。アプリの中には出ない">
-            <Toggle on={fortuneOn} onChange={setFortuneOn} />
+            <Toggle on={fortuneOn} onChange={onFortuneToggle} />
           </SetRow>
           {fortuneOn ? (
-            <SetRow label="配信時間帯" onClick={() => setFortuneTime(cycleNext(['朝 8時ごろ', '昼 12時ごろ', '夜 21時ごろ'], fortuneTime))}>
+            <SetRow label="配信時間帯" onClick={onFortuneTimeChange}>
               <span className="val-chip">{fortuneTime}</span>
             </SetRow>
           ) : null}
@@ -327,6 +411,22 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, openPremium })
           }}>
             <span className="val-chip">JSON</span>
           </SetRow>
+          <input ref={importRef} type="file" accept="application/json,.json" style={{ display: 'none' }}
+            onChange={async (e) => {
+              const file = e.target.files && e.target.files[0];
+              e.target.value = '';
+              if (!file) return;
+              try {
+                const payload = JSON.parse(await file.text());
+                const n = onImport ? await onImport(payload) : 0;
+                flash(n > 0 ? n + '件を取り込んだ' : '新しい項目はなかった');
+              } catch (err) {
+                flash('読み込めなかった（JSON形式？）');
+              }
+            }} />
+          <SetRow label="インポート" sub="書き出したJSONから戻す（マージ）" freeBadge onClick={() => importRef.current && importRef.current.click()}>
+            <span className="val-chip">JSON</span>
+          </SetRow>
           <SetRow label="全削除" sub="棚をぜんぶ空にする" onClick={() => setWipe(true)}>
             <span className="val-chip warn">…</span>
           </SetRow>
@@ -347,8 +447,8 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, openPremium })
           <SetRow label="文字サイズ" onClick={() => setFontSize(cycleNext(['標準', '大きめ', '小さめ'], fontSize))}>
             <span className="val-chip">{fontSize}</span>
           </SetRow>
-          <SetRow label="ライト / ダーク" onClick={() => flash('ダークは準備中')}>
-            <span className="val-chip">ライト</span>
+          <SetRow label="テーマ" sub="自動はOSの設定に追従" onClick={() => setTheme(cycleNext(['自動', 'ライト', 'ダーク'], theme))}>
+            <span className="val-chip">{theme}</span>
           </SetRow>
           <SetRow label="レイアウトタイプ" sub="左利き・大型端末はここから" onClick={() => setLayoutType(cycleNext(['標準', '左利き', '大型端末'], layoutType))}>
             <span className="val-chip">{layoutType}</span>

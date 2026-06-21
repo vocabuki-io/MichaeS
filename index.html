@@ -24,6 +24,41 @@
     --gold: #C5A461; --gold-soft: #E8D9B5;
     --warm: #FF7D5E; --warm-deep: #E85F3F; --warm-tint: #FFEBE3;
   }
+
+  /* ── ダークモード（手動=[data-theme=dark] / OS追従=[data-theme=auto]） ── */
+  :root[data-theme="dark"] { color-scheme: dark;
+    --paper: #16140F; --light: #1E1B15;
+    --ink: #ECE7DD; --ink-mid: #B2A99D; --ink-soft: #7E7568;
+    --card: #211E19; --line: #322E27;
+    --gold: #CDAE6E; --gold-soft: #4F4631;
+    --warm: #FF8666; --warm-deep: #FF9F86; --warm-tint: #3A241D;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-theme="auto"] { color-scheme: dark;
+      --paper: #16140F; --light: #1E1B15;
+      --ink: #ECE7DD; --ink-mid: #B2A99D; --ink-soft: #7E7568;
+      --card: #211E19; --line: #322E27;
+      --gold: #CDAE6E; --gold-soft: #4F4631;
+      --warm: #FF8666; --warm-deep: #FF9F86; --warm-tint: #3A241D;
+    }
+  }
+  /* ダーク時：墨背景＋白文字のCTAは明るい面＋暗い文字へ（--ink反転で面は明色／文字だけ暗く） */
+  :root[data-theme="dark"] .badge, :root[data-theme="dark"] .who-go,
+  :root[data-theme="dark"] .shelf-count, :root[data-theme="dark"] .sel-del,
+  :root[data-theme="dark"] .shelf-note, :root[data-theme="dark"] .dlg-yes { color: var(--paper); }
+  :root[data-theme="dark"] .sel-dot.on svg path { stroke: var(--paper); }
+  :root[data-theme="dark"] .tgl.on .tgl-knob { background: var(--paper); }
+  :root[data-theme="dark"] .shelf-item { border-color: var(--line); box-shadow: none; }
+  :root[data-theme="dark"] .set-card, :root[data-theme="dark"] .embed-wrap { box-shadow: none; }
+  @media (prefers-color-scheme: dark) {
+    :root[data-theme="auto"] .badge, :root[data-theme="auto"] .who-go,
+    :root[data-theme="auto"] .shelf-count, :root[data-theme="auto"] .sel-del,
+    :root[data-theme="auto"] .shelf-note, :root[data-theme="auto"] .dlg-yes { color: var(--paper); }
+    :root[data-theme="auto"] .sel-dot.on svg path { stroke: var(--paper); }
+    :root[data-theme="auto"] .tgl.on .tgl-knob { background: var(--paper); }
+    :root[data-theme="auto"] .shelf-item { border-color: var(--line); box-shadow: none; }
+    :root[data-theme="auto"] .set-card { box-shadow: none; }
+  }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: 'Zen Kaku Gothic New', sans-serif; color: var(--ink); }
   .page { min-height: 100vh; display: grid; place-items: center; background: #E9E5DE; padding: 28px 16px; }
@@ -280,9 +315,29 @@
     animation: popIn calc(.3s * var(--spd,1)) ease both;
     transition: transform .12s ease, border-color .15s ease;
   }
-  .shelf-item:active { transform: scale(.98); }
+  .shelf-item.sel-mode:active { transform: scale(.98); }
   .shelf-item.sel-mode { padding-right: 44px; }
   .shelf-item.selected { border-color: var(--ink); }
+
+  /* 埋込みプレイヤー */
+  .embed-wrap { position: relative; width: 100%; margin-top: 8px; border-radius: 10px; overflow: hidden; background: #000; }
+  .embed-wrap.embed-youtube { aspect-ratio: 16 / 9; }
+  .embed-wrap iframe { display: block; width: 100%; height: 100%; border: 0; }
+  .embed-spotify, .embed-applemusic, .embed-soundcloud { background: transparent; }
+
+  /* タイトル（タップで外部リンク／コピー） */
+  .shelf-item-title-btn {
+    display: flex; align-items: flex-start; gap: 6px; width: 100%;
+    background: none; border: 0; padding: 0; margin-top: 6px; text-align: left;
+    font-family: inherit; color: var(--ink); cursor: pointer;
+    -webkit-user-select: none; user-select: none;
+  }
+  .shelf-item-title-btn:active { opacity: .55; }
+  .shelf-item-title-btn .shelf-item-title { margin-top: 0; flex: 1; min-width: 0; }
+  .open-ext { flex: none; font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+
+  /* 選択モード：オーバーレイで埋込み操作を遮りタップ＝選択 */
+  .sel-overlay { position: absolute; inset: 0; z-index: 5; background: none; border: 0; cursor: pointer; padding: 0; }
   .sel-dot {
     position: absolute; top: 50%; right: 14px; transform: translateY(-50%);
     width: 22px; height: 22px; border-radius: 50%;
@@ -349,14 +404,34 @@
 
   /* 棚内ミニ通知（コピーしたなど） */
   .shelf-note {
-    position: absolute; bottom: 124px; left: 50%; transform: translateX(-50%);
+    position: absolute; bottom: 124px; left: 16px; right: 16px;
+    margin: 0 auto; width: max-content; max-width: calc(100% - 32px); transform: none;
     background: var(--ink); color: #fff; border-radius: 18px; padding: 10px 18px;
     font-size: 12px; font-weight: 700; letter-spacing: .06em;
-    white-space: normal; text-align: center; line-height: 1.55;
-    width: max-content; max-width: calc(100vw - 32px);
+    white-space: normal; text-align: center; line-height: 1.55; word-break: break-word;
     box-shadow: 0 12px 24px rgba(42,38,34,.22); z-index: 8;
     animation: popIn calc(.25s * var(--spd,1)) ease both;
   }
+
+
+  /* 画像の全画面ビューア */
+  .viewer {
+    position: absolute; inset: 0; z-index: 60; display: grid; place-items: center;
+    background: rgba(42,38,34,.92); padding: 24px;
+    padding-top: calc(24px + env(safe-area-inset-top)); padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    animation: viewerIn .22s ease both; cursor: zoom-out;
+  }
+  .viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 12px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.5); animation: viewerImgIn .28s cubic-bezier(.22,1,.36,1) both; }
+  .viewer-close {
+    position: absolute; top: calc(14px + env(safe-area-inset-top)); right: 16px;
+    width: 38px; height: 38px; border-radius: 50%; border: 0; cursor: pointer;
+    background: rgba(255,255,255,.14); color: #fff; font-size: 22px; line-height: 1;
+    display: grid; place-items: center; backdrop-filter: blur(4px);
+  }
+  .viewer-close:active { transform: scale(.92); }
+  @keyframes viewerIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes viewerImgIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
 
   /* 削除確認ダイアログ */
   .dialog-dim {
@@ -646,12 +721,15 @@
 
 <script>
 // リンクメタ取得プロキシ（Cloudflare Worker）のURL。未設定なら従来どおりURL表示のみ。
-// 例: window.MICHAES_META_ENDPOINT = 'https://michaes-meta.dragxonx3.workers.dev';
-window.MICHAES_META_ENDPOINT = 'https://michaes-meta.dragxonx3.workers.dev';
-// Web Push（バックグラウンド通知）。両方設定すると「通知をのぞいてみる」で30秒後に実通知。
-// 例: window.MICHAES_PUSH_ENDPOINT = 'https://michaes-push.dragxonx3.workers.dev';
-window.MICHAES_PUSH_ENDPOINT = 'https://michaes-push.dragxonx3.workers.dev';
-window.MICHAES_VAPID_PUBLIC = 'BAhHi5zYA_tg3woTGLSuwFVHL6q77m3ibFpIqMNeFdpV89e-PwLzbz6ieJiUGygUsY69l4L5b5xpbYbXtpcdcEg';  // VAPID公開鍵(base64url・Worker側と対)
+// 例: window.MICHAES_META_ENDPOINT = 'https://meta.michae-s.com';
+// ── 環境自動判定（ホスト名で本番/実験を切替。コード編集不要） ──
+(function () {
+  var h = location.hostname;
+  var PROD = h === 'michae-s.com' || h === 'www.michae-s.com';
+  window.MICHAES_META_ENDPOINT = PROD ? 'https://meta.michae-s.com' : 'https://meta-dev.michae-s.com';
+  window.MICHAES_PUSH_ENDPOINT = PROD ? 'https://push.michae-s.com' : 'https://push-dev.michae-s.com';
+  window.MICHAES_VAPID_PUBLIC = 'BAhHi5zYA_tg3woTGLSuwFVHL6q77m3ibFpIqMNeFdpV89e-PwLzbz6ieJiUGygUsY69l4L5b5xpbYbXtpcdcEg';
+})();
 </script>
 <script src="michaes-store.js"></script>
 <script type="text/babel" src="ios-frame.jsx"></script>
