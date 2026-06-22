@@ -252,7 +252,7 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
       .then((r) => r.json())
       .then((d) => {
         if (d && d.ok && d.url) { window.location.href = d.url; }
-        else { flash('決済の開始に失敗'); setPayBusy(false); }
+        else { flash(d && d.error ? '決済失敗: ' + d.error : '決済の開始に失敗'); setPayBusy(false); }
       })
       .catch(() => { flash('通信エラー'); setPayBusy(false); });
   };
