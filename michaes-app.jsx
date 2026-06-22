@@ -521,6 +521,13 @@ function App() {
   const [view, setView] = useState(null);       // 棚ページ（verbId）
   const [whoText, setWhoText] = useState('');
   const [bootUpgrade, setBootUpgrade] = useState(false); // LPの「プレミアムにする」からの着地
+  const [authUser, setAuthUser] = useState(null);        // Googleログイン中ユーザー（App保持＝設定の開閉で消えない）
+  // 起動時に1回だけ保存済みセッションを復元
+  useEffect(() => {
+    const st = window.MichaeSStore;
+    if (!st || !st.loadAuth) return;
+    st.loadAuth().then((a) => { if (a && a.user) setAuthUser(a.user); });
+  }, []);
   const timers = useRef([]);
 
   // LP → index.html?upgrade=1 で着地したら、設定のプレミアム導線を開く（課金導線の接続）
@@ -834,6 +841,7 @@ function App() {
           {/* 設定画面 */}
           {view === 'settings' && (
             <SettingsPage onBack={() => setView(null)} t={t} setTweak={setTweak} onWipeAll={() => setShelves({})} openPremium={bootUpgrade}
+              authUser={authUser} setAuthUser={setAuthUser}
               onExport={async () => {
                 const payload = await buildExport(shelves);
                 const n = Object.values(payload.shelves).reduce((a, arr) => a + arr.length, 0);

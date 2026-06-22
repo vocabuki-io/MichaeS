@@ -130,7 +130,7 @@ function Fold({ title, children }) {
 
 const cycleNext = (list, v) => list[(list.indexOf(v) + 1) % list.length];
 
-function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, openPremium }) {
+function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, openPremium, authUser, setAuthUser }) {
   const { useState, useRef, useEffect } = React;
   // コア
   const [resurface, setResurface] = useState(true);
@@ -148,7 +148,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   const [layoutType, setLayoutType] = useState('標準');
   // UI
   const [premium, setPremium] = useState(!!openPremium);   // アップグレードシート（LP着地時は開いて出る）
-  const [authUser, setAuthUser] = useState(null);  // Googleログイン中ユーザー {sub,email,name,picture}
   const [authBusy, setAuthBusy] = useState(false);
   const [wipe, setWipe] = useState(false);         // 全削除ダイアログ
   const [banner, setBanner] = useState(null);      // 占い通知プレビュー
@@ -199,12 +198,7 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   };
 
   // ── Googleログイン（プレミアム導線でのみ使用） ──
-  // 起動時に保存済みセッションを復元
-  useEffect(() => {
-    const st = window.MichaeSStore;
-    if (!st || !st.loadAuth) return;
-    st.loadAuth().then((a) => { if (a && a.user) setAuthUser(a.user); });
-  }, []);
+  // 復元はApp側で起動時に実施（authUserはpropsで受け取る）
 
   // IDトークンを受け取り→API検証→保存
   const handleCredential = (credential) => {
