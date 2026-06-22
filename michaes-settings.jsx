@@ -219,6 +219,7 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
       .then((r) => r.json())
       .then((d) => {
         if (d && d.ok && d.user) {
+          try { if (gbtnRef.current) gbtnRef.current.innerHTML = ''; } catch (e) {}
           setAuthUser(d.user);
           const st = window.MichaeSStore;
           if (st && st.saveAuth) st.saveAuth({ session: d.session, user: d.user });
@@ -569,15 +570,15 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
             <p className="prem-price">月額 ¥480 ・ 年額 ¥4,800<span className="prem-price-sub">いつでも解約できます</span></p>
 
             {authUser ? (
-              <div className="prem-auth">
+              <div className="prem-auth" key="signed-in">
                 <p className="prem-auth-ok">✓ {authUser.email || authUser.name || 'ログイン済み'}</p>
-                <div className="dialog-btns">
-                  <button className="dlg-no" onClick={signOut}>ログアウト</button>
+                <div className="prem-actions">
                   <button className="dlg-yes gold" onClick={() => { setPremium(false); flash('課金は次の工程で接続（Stripe）'); }}>支払いへ進む</button>
+                  <button className="dlg-logout" onClick={signOut}>ログアウト</button>
                 </div>
               </div>
             ) : (
-              <div className="prem-auth">
+              <div className="prem-auth" key="signed-out">
                 <p className="prem-auth-lead">プレミアムは端末をまたいで使えるよう、Googleでログインします。</p>
                 <div className="gbtn-wrap" ref={gbtnRef} />
                 {authBusy ? <p className="prem-auth-busy">確認中…</p> : null}

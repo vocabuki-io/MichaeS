@@ -580,6 +580,14 @@
   .gbtn-wrap { display: flex; justify-content: center; min-height: 44px; margin-bottom: 14px; }
   .prem-auth-busy { font-size: 12px; color: var(--ink-soft); margin: 0 0 12px; }
   .prem-auth-ok { font-size: 13px; font-weight: 700; color: var(--gold); margin: 0 0 16px; letter-spacing: .03em; word-break: break-all; }
+  .prem-actions { display: flex; flex-direction: column; gap: 9px; }
+  .prem-actions .dlg-yes { width: 100%; }
+  .dlg-logout {
+    border: 1px solid #F0D2CD; background: #FCEAE7; color: #C75D4E;
+    border-radius: 999px; padding: 11px 8px; font-family: inherit;
+    font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  }
+  .dlg-logout:active { transform: scale(.95); }
 
   /* ── 中央アニメーション共通 ─────────────── */
   .anim { position: relative; display: grid; place-items: center; width: 220px; height: 220px; }

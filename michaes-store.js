@@ -91,17 +91,24 @@
         .catch(function () {});
     },
     // ── 認証（プレミアム時のGoogleログイン。{session, user} を1レコードで） ──
+    // iOSではIndexedDBがタスクキル/ITPで揮発しうるため localStorage を優先ミラーに。
     loadAuth: function () {
+      try {
+        var ls = window.localStorage && window.localStorage.getItem('michaes-auth');
+        if (ls) return Promise.resolve(JSON.parse(ls));
+      } catch (e) {}
       return withStore('readonly', function (s) { return s.get('auth'); })
         .then(function (v) { return v || null; })
         .catch(function () { return null; });
     },
     saveAuth: function (obj) {
+      try { if (window.localStorage) window.localStorage.setItem('michaes-auth', JSON.stringify(obj)); } catch (e) {}
       return withStore('readwrite', function (s) { return s.put(obj, 'auth'); })
         .then(function () {})
         .catch(function () {});
     },
     clearAuth: function () {
+      try { if (window.localStorage) window.localStorage.removeItem('michaes-auth'); } catch (e) {}
       return withStore('readwrite', function (s) { return s.delete('auth'); })
         .then(function () {})
         .catch(function () {});
