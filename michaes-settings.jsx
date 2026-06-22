@@ -130,7 +130,8 @@ function Fold({ title, children }) {
 
 const cycleNext = (list, v) => list[(list.indexOf(v) + 1) % list.length];
 
-function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, openPremium, authUser, setAuthUser }) {
+function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, openPremium, auth, setAuth, isPremium, refreshSub }) {
+  const authUser = auth && auth.user;
   const { useState, useRef, useEffect } = React;
   // コア
   const [resurface, setResurface] = useState(true);
@@ -214,10 +215,11 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
       .then((d) => {
         if (d && d.ok && d.user) {
           try { if (gbtnRef.current) gbtnRef.current.innerHTML = ''; } catch (e) {}
-          setAuthUser(d.user);
+          setAuth({ session: d.session, user: d.user });
           const st = window.MichaeSStore;
           if (st && st.saveAuth) st.saveAuth({ session: d.session, user: d.user });
           try { if (window.google && window.google.accounts && window.google.accounts.id) window.google.accounts.id.cancel(); } catch (e) {}
+          if (refreshSub) refreshSub(d.session);
           flash('ログインしました');
         } else {
           flash('ログイン失敗');
@@ -228,11 +230,31 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   };
 
   const signOut = () => {
-    setAuthUser(null);
+    setAuth(null);
     const st = window.MichaeSStore;
     if (st && st.clearAuth) st.clearAuth();
     try { if (window.google && window.google.accounts && window.google.accounts.id) window.google.accounts.id.disableAutoSelect(); } catch (e) {}
     flash('ログアウトしました');
+  };
+
+  // ② Stripe決済へ（要ログイン）
+  const [planSel, setPlanSel] = useState('month');
+  const [payBusy, setPayBusy] = useState(false);
+  const goCheckout = () => {
+    const ep = window.MICHAES_API_ENDPOINT;
+    if (!ep || !auth || !auth.session) { flash('ログインが必要です'); return; }
+    setPayBusy(true);
+    fetch(ep + '/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + auth.session },
+      body: JSON.stringify({ plan: planSel }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && d.ok && d.url) { window.location.href = d.url; }
+        else { flash('決済の開始に失敗'); setPayBusy(false); }
+      })
+      .catch(() => { flash('通信エラー'); setPayBusy(false); });
   };
 
   // プレミアムシートが開いて未ログインのとき、Googleボタンを描画
@@ -387,8 +409,8 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
       <div className="shelf-list set-list">
         <SetGroup title="アカウント / プラン">
           <SetRow label="Google" sub={authUser ? ((authUser.email || authUser.name || 'ログイン中') + ' ・ 接続中') : '未接続'} />
-          <SetRow label="プラン" sub="無料プラン">
-            <button className="up-btn" onClick={() => setPremium(true)}>プレミアムにする</button>
+          <SetRow label="プラン" sub={isPremium ? 'プレミアム' : '無料プラン'}>
+            {isPremium ? <span className="val-chip gold-chip">✦ 有効</span> : <button className="up-btn" onClick={() => setPremium(true)}>プレミアムにする</button>}
           </SetRow>
         </SetGroup>
 
@@ -405,8 +427,8 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
           <SetRow label="賞味期限の通知" sub="期限つきリンクの何日前に知らせるか" onClick={() => setRemindDays(cycleNext(['当日', '前日', '3日前', '1週間前'], remindDays))}>
             <span className="val-chip">{remindDays}</span>
           </SetRow>
-          <SetRow label="詳細ルール" sub="感覚 × 時間帯 × 場所 × イヤホン" locked onClick={() => setPremium(true)}>
-            <span className="val-chip dim">プレミアム</span>
+          <SetRow label="詳細ルール" sub="感覚 × 時間帯 × 場所 × イヤホン" locked={!isPremium} onClick={isPremium ? undefined : () => setPremium(true)}>
+            <span className="val-chip dim">{isPremium ? '✦' : 'プレミアム'}</span>
           </SetRow>
         </SetGroup>
 
@@ -453,14 +475,14 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
         </Fold>
 
         <Fold title="データ">
-          <SetRow label="横断インポート" sub="既存ブクマ・スクショを一括で" locked onClick={() => setPremium(true)}>
-            <span className="val-chip dim">プレミアム</span>
+          <SetRow label="横断インポート" sub="既存ブクマ・スクショを一括で" locked={!isPremium} onClick={isPremium ? undefined : () => setPremium(true)}>
+            <span className="val-chip dim">{isPremium ? '✦' : 'プレミアム'}</span>
           </SetRow>
-          <SetRow label="書き出し" sub="Obsidian など" locked onClick={() => setPremium(true)}>
-            <span className="val-chip dim">プレミアム</span>
+          <SetRow label="書き出し" sub="Obsidian など" locked={!isPremium} onClick={isPremium ? undefined : () => setPremium(true)}>
+            <span className="val-chip dim">{isPremium ? '✦' : 'プレミアム'}</span>
           </SetRow>
-          <SetRow label="同期・容量" locked onClick={() => setPremium(true)}>
-            <span className="val-chip dim">プレミアム</span>
+          <SetRow label="同期・容量" locked={!isPremium} onClick={isPremium ? undefined : () => setPremium(true)}>
+            <span className="val-chip dim">{isPremium ? '✦' : 'プレミアム'}</span>
           </SetRow>
           <SetRow label="エクスポート" sub="自分のデータは、いつでも持ち出せる" freeBadge onClick={async () => {
             try {
@@ -566,10 +588,21 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
             {authUser ? (
               <div className="prem-auth" key="signed-in">
                 <p className="prem-auth-ok">✓ {authUser.email || authUser.name || 'ログイン済み'}</p>
-                <div className="prem-actions">
-                  <button className="dlg-yes gold" onClick={() => { setPremium(false); flash('課金は次の工程で接続（Stripe）'); }}>支払いへ進む</button>
-                  <button className="dlg-logout" onClick={signOut}>ログアウト</button>
-                </div>
+                {isPremium ? (
+                  <div className="prem-actions">
+                    <p className="prem-active-note">プレミアム有効 ・ ご利用ありがとうございます</p>
+                    <button className="dlg-logout" onClick={signOut}>ログアウト</button>
+                  </div>
+                ) : (
+                  <div className="prem-actions">
+                    <div className="plan-toggle">
+                      <button className={'pt-btn' + (planSel === 'month' ? ' on' : '')} onClick={() => setPlanSel('month')}>月額 ¥480</button>
+                      <button className={'pt-btn' + (planSel === 'year' ? ' on' : '')} onClick={() => setPlanSel('year')}>年額 ¥4,800</button>
+                    </div>
+                    <button className="dlg-yes gold" disabled={payBusy} onClick={goCheckout}>{payBusy ? '決済へ移動中…' : '支払いへ進む'}</button>
+                    <button className="dlg-logout" onClick={signOut}>ログアウト</button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="prem-auth" key="signed-out">
