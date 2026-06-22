@@ -573,6 +573,12 @@
   .dlg-yes.gold {
     background: linear-gradient(180deg, #D8B873, #C5A461); color: #fff;
   }
+  .prem-price { margin: 2px 0 16px; font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: .04em; }
+  .prem-price-sub { display: block; font-size: 11px; font-weight: 400; color: var(--ink-soft); margin-top: 3px; }
+  .prem-auth-lead { font-size: 12px; color: var(--ink-mid); letter-spacing: .04em; line-height: 1.7; margin: 0 0 14px; }
+  .gbtn-wrap { display: flex; justify-content: center; min-height: 44px; margin-bottom: 14px; }
+  .prem-auth-busy { font-size: 12px; color: var(--ink-soft); margin: 0 0 12px; }
+  .prem-auth-ok { font-size: 13px; font-weight: 700; color: var(--gold); margin: 0 0 16px; letter-spacing: .03em; word-break: break-all; }
 
   /* ── 中央アニメーション共通 ─────────────── */
   .anim { position: relative; display: grid; place-items: center; width: 220px; height: 220px; }
@@ -718,6 +724,8 @@
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<!-- Google Identity Services（プレミアム時のサインインのみで使用） -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 
 <script>
 // リンクメタ取得プロキシ（Cloudflare Worker）のURL。未設定なら従来どおりURL表示のみ。
@@ -728,7 +736,9 @@
   var PROD = h === 'michae-s.com' || h === 'www.michae-s.com';
   window.MICHAES_META_ENDPOINT = PROD ? 'https://meta.michae-s.com' : 'https://meta-dev.michae-s.com';
   window.MICHAES_PUSH_ENDPOINT = PROD ? 'https://push.michae-s.com' : 'https://push-dev.michae-s.com';
+  window.MICHAES_API_ENDPOINT  = PROD ? 'https://api.michae-s.com'  : 'https://api-dev.michae-s.com';
   window.MICHAES_VAPID_PUBLIC = 'BAhHi5zYA_tg3woTGLSuwFVHL6q77m3ibFpIqMNeFdpV89e-PwLzbz6ieJiUGygUsY69l4L5b5xpbYbXtpcdcEg';
+  window.MICHAES_GOOGLE_CLIENT_ID = '960451114883-9iu8k7jj8ntpqkl8usr9v82pn6b4a4fu.apps.googleusercontent.com';
 })();
 </script>
 <script src="michaes-store.js"></script>

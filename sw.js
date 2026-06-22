@@ -5,7 +5,7 @@
 //   - 同一オリジンのシェル資産は cache-first
 //   - CDN（unpkg の React/Babel）と Google Fonts は cache-first（バージョン付きURLなので安全）
 //   - 更新は VERSION を上げる → 旧キャッシュは activate で掃除
-const VERSION = 'michaes-v16';
+const VERSION = 'michaes-v17';
 const SHELL_CACHE = VERSION + '-shell';
 const RUNTIME_CACHE = VERSION + '-runtime';
 

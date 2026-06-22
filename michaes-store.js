@@ -89,6 +89,22 @@
       return withStore('readwrite', function (s) { return s.put(obj, 'settings'); })
         .then(function () {})
         .catch(function () {});
+    },
+    // ── 認証（プレミアム時のGoogleログイン。{session, user} を1レコードで） ──
+    loadAuth: function () {
+      return withStore('readonly', function (s) { return s.get('auth'); })
+        .then(function (v) { return v || null; })
+        .catch(function () { return null; });
+    },
+    saveAuth: function (obj) {
+      return withStore('readwrite', function (s) { return s.put(obj, 'auth'); })
+        .then(function () {})
+        .catch(function () {});
+    },
+    clearAuth: function () {
+      return withStore('readwrite', function (s) { return s.delete('auth'); })
+        .then(function () {})
+        .catch(function () {});
     }
   };
 })();

@@ -148,6 +148,8 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   const [layoutType, setLayoutType] = useState('標準');
   // UI
   const [premium, setPremium] = useState(!!openPremium);   // アップグレードシート（LP着地時は開いて出る）
+  const [authUser, setAuthUser] = useState(null);  // Googleログイン中ユーザー {sub,email,name,picture}
+  const [authBusy, setAuthBusy] = useState(false);
   const [wipe, setWipe] = useState(false);         // 全削除ダイアログ
   const [banner, setBanner] = useState(null);      // 占い通知プレビュー
   const [note, setNote] = useState('');
@@ -195,6 +197,69 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
     setNote(m);
     later(() => setNote(''), 1400);
   };
+
+  // ── Googleログイン（プレミアム導線でのみ使用） ──
+  // 起動時に保存済みセッションを復元
+  useEffect(() => {
+    const st = window.MichaeSStore;
+    if (!st || !st.loadAuth) return;
+    st.loadAuth().then((a) => { if (a && a.user) setAuthUser(a.user); });
+  }, []);
+
+  // IDトークンを受け取り→API検証→保存
+  const handleCredential = (credential) => {
+    const ep = window.MICHAES_API_ENDPOINT;
+    if (!ep) { flash('APIエンドポイント未設定'); return; }
+    setAuthBusy(true);
+    fetch(ep + '/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && d.ok && d.user) {
+          setAuthUser(d.user);
+          const st = window.MichaeSStore;
+          if (st && st.saveAuth) st.saveAuth({ session: d.session, user: d.user });
+          flash('ログインしました');
+        } else {
+          flash('ログイン失敗');
+        }
+      })
+      .catch(() => flash('通信エラー'))
+      .then(() => setAuthBusy(false));
+  };
+
+  const signOut = () => {
+    setAuthUser(null);
+    const st = window.MichaeSStore;
+    if (st && st.clearAuth) st.clearAuth();
+    try { if (window.google && window.google.accounts && window.google.accounts.id) window.google.accounts.id.disableAutoSelect(); } catch (e) {}
+    flash('ログアウトしました');
+  };
+
+  // プレミアムシートが開いて未ログインのとき、Googleボタンを描画
+  const gbtnRef = useRef(null);
+  useEffect(() => {
+    if (!premium || authUser) return;
+    const cid = window.MICHAES_GOOGLE_CLIENT_ID;
+    if (!cid) return;
+    let tries = 0;
+    const render = () => {
+      const g = window.google && window.google.accounts && window.google.accounts.id;
+      if (!g) { if (tries++ < 40) later(render, 150); return; }
+      try {
+        g.initialize({ client_id: cid, callback: (resp) => handleCredential(resp.credential) });
+        if (gbtnRef.current) {
+          gbtnRef.current.innerHTML = '';
+          g.renderButton(gbtnRef.current, { type: 'standard', theme: 'outline', size: 'large', text: 'continue_with', shape: 'pill', logo_alignment: 'center' });
+        }
+      } catch (e) {}
+    };
+    render();
+  }, [premium, authUser]);
+
 
   const previewFortune = () => {
     if (!fortuneOn) return;
@@ -502,10 +567,26 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
             <span className="prem-star">✦</span>
             <p className="dialog-t">プレミアム</p>
             <p className="dialog-s">再浮上の詳細ルール、横断インポート、<br />書き出し、同期がひらく</p>
-            <div className="dialog-btns">
-              <button className="dlg-no" onClick={() => setPremium(false)}>いまはいい</button>
-              <button className="dlg-yes gold" onClick={() => { setPremium(false); flash('課金導線は未接続（KOMOJU予定）'); }}>すすむ</button>
-            </div>
+            <p className="prem-price">月額 ¥480 ・ 年額 ¥4,800<span className="prem-price-sub">いつでも解約できます</span></p>
+
+            {authUser ? (
+              <div className="prem-auth">
+                <p className="prem-auth-ok">✓ {authUser.email || authUser.name || 'ログイン済み'}</p>
+                <div className="dialog-btns">
+                  <button className="dlg-no" onClick={signOut}>ログアウト</button>
+                  <button className="dlg-yes gold" onClick={() => { setPremium(false); flash('課金は次の工程で接続（Stripe）'); }}>支払いへ進む</button>
+                </div>
+              </div>
+            ) : (
+              <div className="prem-auth">
+                <p className="prem-auth-lead">プレミアムは端末をまたいで使えるよう、Googleでログインします。</p>
+                <div className="gbtn-wrap" ref={gbtnRef} />
+                {authBusy ? <p className="prem-auth-busy">確認中…</p> : null}
+                <div className="dialog-btns">
+                  <button className="dlg-no" onClick={() => setPremium(false)}>いまはいい</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : null}
