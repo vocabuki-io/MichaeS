@@ -222,6 +222,7 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
           setAuthUser(d.user);
           const st = window.MichaeSStore;
           if (st && st.saveAuth) st.saveAuth({ session: d.session, user: d.user });
+          try { if (window.google && window.google.accounts && window.google.accounts.id) window.google.accounts.id.cancel(); } catch (e) {}
           flash('ログインしました');
         } else {
           flash('ログイン失敗');
@@ -390,9 +391,7 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
 
       <div className="shelf-list set-list">
         <SetGroup title="アカウント / プラン">
-          <SetRow label="Google" sub="hikari@gmail.com ・ 接続中">
-            <span className="val-chip dim">切替</span>
-          </SetRow>
+          <SetRow label="Google" sub={authUser ? ((authUser.email || authUser.name || 'ログイン中') + ' ・ 接続中') : '未接続'} />
           <SetRow label="プラン" sub="無料プラン">
             <button className="up-btn" onClick={() => setPremium(true)}>プレミアムにする</button>
           </SetRow>
