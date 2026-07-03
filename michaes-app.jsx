@@ -23,6 +23,7 @@ const SHELF = {
 };
 
 const SVC_NAME = { x: 'X', youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', niconico: 'niconico', web: 'リンク' };
+const ytTypeLabel = (t) => ({ short: 'ショート', video: '動画' }[t] || null);
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "lightBeam": 0.8,
@@ -151,6 +152,102 @@ function itemSig(it) {
   if (it.kind === 'image') return 'I:' + (it.at || '');
   return (it.kind || 'T') + ':' + (it.text || '');
 }
+
+// ── もやっと検索：保存アイテムを軽い検索用一覧に ──
+function searchTitleOf(it) {
+  if (it.kind === 'image') return '画像';
+  if (it.label) return it.label;
+  if (it.meta && it.meta.title) return it.meta.title;
+  if (it.text) return it.text.split('\n')[0].slice(0, 60);
+  if (it.url) return it.url;
+  return '(無題)';
+}
+function collectSearchItems(shelves) {
+  const out = [];
+  Object.keys(shelves || {}).forEach((shelf) => {
+    (shelves[shelf] || []).forEach((it) => {
+      if (it.kind === 'image') return; // MVPは画像を対象外
+      // タイトル＋チャンネル＋種別＋本文/URL をAIへの手がかりに（YouTube情報も活用）
+      const parts = [];
+      if (it.label) parts.push(it.label);
+      if (it.channel) parts.push(it.channel);
+      if (it.ytType && ytTypeLabel(it.ytType)) parts.push(ytTypeLabel(it.ytType));
+      if (it.text) parts.push(it.text.split('\n')[0]);
+      if (it.url) parts.push(it.url);
+      const snippet = (parts.join(' ｜ ') || '').slice(0, 180);
+      out.push({ id: itemSig(it), shelf, title: searchTitleOf(it), snippet, url: it.url || null });
+    });
+  });
+  return out;
+}
+
+function MoyaSearch({ shelves, session, onClose }) {
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState(null); // null=未実行, []=該当なし
+  const [err, setErr] = useState('');
+  const run = () => {
+    const ep = window.MICHAES_API_ENDPOINT;
+    const query = q.trim();
+    if (!ep || !session) { setErr('ログインが必要です'); return; }
+    if (!query) return;
+    const items = collectSearchItems(shelves);
+    if (items.length === 0) { setResults([]); return; }
+    // id→実アイテム（在処付き）
+    const flat = [];
+    Object.keys(shelves || {}).forEach((shelf) => (shelves[shelf] || []).forEach((it) => flat.push({ id: itemSig(it), it, shelf })));
+    setBusy(true); setErr(''); setResults(null);
+    fetch(ep + '/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session },
+      body: JSON.stringify({ query, items }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && d.ok) {
+          const matched = (d.matches || []).map((m) => {
+            const f = flat.find((x) => x.id === m.id);
+            return f ? { it: f.it, shelf: f.shelf, reason: m.reason } : null;
+          }).filter(Boolean);
+          setResults(matched);
+        } else { setErr(d && d.error ? d.error : '検索に失敗'); }
+      })
+      .catch(() => setErr('通信エラー'))
+      .then(() => setBusy(false));
+  };
+  const openItem = (it) => {
+    if (it.url) { try { const w = window.open(it.url, '_blank', 'noopener'); if (!w) window.location.href = it.url; } catch (e) { window.location.href = it.url; } }
+  };
+  return (
+    <div className="moya-dim" onClick={onClose}>
+      <div className="moya" onClick={(e) => e.stopPropagation()}>
+        <div className="moya-head">
+          <span className="moya-star">✦</span>
+          <p className="moya-title">もやっと検索</p>
+          <button className="moya-x" onClick={onClose} aria-label="閉じる">×</button>
+        </div>
+        <p className="moya-lead">ぼんやりした記憶でいい。「あの料理の動画」みたいに。</p>
+        <div className="moya-inputrow">
+          <input className="moya-input" value={q} onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') run(); }} placeholder="探したいものを、ぼんやりと" />
+          <button className="moya-go" disabled={busy} onClick={run}>{busy ? '…' : '探す'}</button>
+        </div>
+        {err ? <p className="moya-err">{err}</p> : null}
+        <div className="moya-results">
+          {busy ? <p className="moya-note">記憶をたどっています…</p> : null}
+          {!busy && results && results.length === 0 ? <p className="moya-note">近いものは見つかりませんでした。</p> : null}
+          {!busy && results && results.map((r, i) => (
+            <button className="moya-hit" key={i} onClick={() => openItem(r.it)}>
+              <span className="moya-hit-title">{searchTitleOf(r.it)}</span>
+              <span className="moya-hit-meta">{(SHELF[r.shelf] && SHELF[r.shelf].title) || r.shelf}{r.reason ? ' ・ ' + r.reason : ''}</span>
+            </button>
+          ))}
+        </div>
+        <p className="moya-priv">検索時、保存内容の一部がAIに送られます（プレミアム機能）。</p>
+      </div>
+    </div>
+  );
+}
 // エクスポートJSON → 棚オブジェクト（画像はBlob＋object URLに復元）
 function parseImport(payload) {
   if (!payload || payload.app !== 'MichaeS' || !payload.shelves || typeof payload.shelves !== 'object') return null;
@@ -169,6 +266,56 @@ function parseImport(payload) {
     });
   });
   return out;
+}
+
+// ── 端末間同期（Google Drive）用のシリアライズ＆マージ ──
+// 同期ペイロード（MVP: 画像は送らない＝リンク/テキスト/mdのみ）。itemSig/at はそのまま持つ。
+function buildSyncPayload(shelves, tombstones) {
+  const out = {};
+  Object.keys(shelves || {}).forEach((k) => {
+    out[k] = (shelves[k] || []).filter((it) => it.kind !== 'image').map((it) => {
+      const c = {}; for (const p in it) { if (p !== 'blob' && p !== 'src') c[p] = it[p]; }
+      return c;
+    });
+  });
+  return { app: 'MichaeS', schema: 2, syncedAt: new Date().toISOString(), shelves: out, tombstones: tombstones || {} };
+}
+
+// per-item マージ＋墓標。ローカルの画像は常に保持（同期対象外）。
+function mergeSync(localShelves, localTomb, remote) {
+  const remoteShelves = (remote && remote.shelves) || {};
+  const remoteTomb = (remote && remote.tombstones) || {};
+  // 墓標を統合（同sigは新しいdeletedAt優先）＋90日より古いものはprune
+  const tomb = Object.assign({}, remoteTomb);
+  Object.keys(localTomb || {}).forEach((sig) => { if (!tomb[sig] || localTomb[sig] > tomb[sig]) tomb[sig] = localTomb[sig]; });
+  const PRUNE = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  Object.keys(tomb).forEach((sig) => { if (tomb[sig] < PRUNE) delete tomb[sig]; });
+
+  const keys = {};
+  Object.keys(localShelves || {}).forEach((k) => { keys[k] = 1; });
+  Object.keys(remoteShelves).forEach((k) => { keys[k] = 1; });
+  const shelves = {};
+  Object.keys(keys).forEach((k) => {
+    const bySig = {};
+    const add = (it) => {
+      const sig = itemSig(it);
+      const prev = bySig[sig];
+      if (!prev || (it.at || 0) > (prev.at || 0)) bySig[sig] = it;
+    };
+    (localShelves[k] || []).forEach(add);
+    (remoteShelves[k] || []).forEach(add);
+    const arr = [];
+    Object.keys(bySig).forEach((sig) => {
+      const it = bySig[sig];
+      if (it.kind === 'image') { arr.push(it); return; } // 画像はローカル専用で常に残す
+      const del = tomb[sig];
+      if (del != null && (it.at || 0) <= del) return;     // 削除済み（再追加はatが新しいので残る）
+      arr.push(it);
+    });
+    arr.sort((a, b) => (a.at || 0) - (b.at || 0));
+    shelves[k] = arr;
+  });
+  return { shelves: shelves, tombstones: tomb };
 }
 
 // 実機判定：実機/PWAでは試作用iPhoneフレーム(IOSDevice)を外して全画面で描く。
@@ -257,11 +404,14 @@ async function readClipboard() {
   return null;
 }
 
-const kindLabel = (it) =>
-  it.kind === 'link' ? SVC_NAME[it.service || 'web']
-  : it.kind === 'image' ? '画像'
-  : it.kind === 'md' ? 'メモ（Markdown）'
-  : 'テキスト';
+const kindLabel = (it) => {
+  if (it.kind === 'link') {
+    const base = SVC_NAME[it.service || 'web'];
+    if (it.service === 'youtube' && it.ytType && it.ytType !== 'video') return base + '・' + ytTypeLabel(it.ytType);
+    return base;
+  }
+  return it.kind === 'image' ? '画像' : it.kind === 'md' ? 'メモ（Markdown）' : 'テキスト';
+};
 
 const shelfTitle = (it) => {
   if (it.kind === 'link') return it.label || prettyUrl(it.url);
@@ -411,6 +561,7 @@ function ShelfPage({ verbId, items, onBack, onDelete }) {
                     ? <span className="svc-inline"><SvcIcon id={it.service} size={13} /></span>
                     : <span className="src-dot" aria-hidden="true"></span>}
                   <span>{kindLabel(it)}</span>
+                  {it.kind === 'link' && it.channel ? (<React.Fragment><span className="dot">·</span><span>{clip(it.channel, 18)}</span></React.Fragment>) : null}
                   <span className="dot">·</span>
                   <span>{ageText(it.at)}</span>
                   {it.who && it.who !== 'あとで決める' ? <span className="who-tag">{it.who}</span> : null}
@@ -523,6 +674,10 @@ function App() {
   const [bootUpgrade, setBootUpgrade] = useState(false); // LPの「プレミアムにする」からの着地
   const [auth, setAuth] = useState(null);                // {session, user}（App保持＝設定の開閉で消えない）
   const [isPremium, setIsPremium] = useState(false);     // Stripe購読が有効か
+  const [searchOpen, setSearchOpen] = useState(false);   // もやっと検索オーバーレイ
+  const [tombstones, setTombstones] = useState({});      // 同期用：削除itemSig -> deletedAt
+  const [syncOn, setSyncOn] = useState(false);           // 端末間同期（Drive）ON/OFF（設定のミラー）
+  const [lastSync, setLastSync] = useState(null);        // 最終同期時刻
   const subPolled = useRef(false);
   // 起動時に1回だけ保存済みセッションを復元
   useEffect(() => {
@@ -579,8 +734,9 @@ function App() {
     const store = window.MichaeSStore;
     // テーマ適用（設定を一度も開いていなくても効くよう、起動時に反映。既定=自動でOS追従）
     const applyTheme = (t) => { try { document.documentElement.setAttribute('data-theme', { '自動': 'auto', 'ライト': 'light', 'ダーク': 'dark' }[t] || 'auto'); } catch (e) {} };
-    if (store && store.loadSettings) store.loadSettings().then((s) => applyTheme(s && s.theme)).catch(() => applyTheme('自動'));
+    if (store && store.loadSettings) store.loadSettings().then((s) => { applyTheme(s && s.theme); if (s && typeof s.syncOn === 'boolean') setSyncOn(s.syncOn); }).catch(() => applyTheme('自動'));
     else applyTheme('自動');
+    if (store && store.loadTombstones) store.loadTombstones().then((t) => { if (t && Object.keys(t).length) setTombstones(t); }).catch(() => {});
     if (!store) { setHydrated(true); return; }
     store.load()
       .then((s) => { if (s && Object.keys(s).length) setShelves(s); })
@@ -590,6 +746,46 @@ function App() {
   useEffect(() => {
     if (hydrated && window.MichaeSStore) window.MichaeSStore.save(shelves);
   }, [shelves, hydrated]);
+  useEffect(() => {
+    if (hydrated && window.MichaeSStore && window.MichaeSStore.saveTombstones) window.MichaeSStore.saveTombstones(tombstones);
+  }, [tombstones, hydrated]);
+
+  // ── 端末間同期（Google Drive appDataFolder。プレミアム＆同期ON時のみ） ──
+  const syncing = useRef(false);
+  const didStartupSync = useRef(false);
+  const pushTimer = useRef(null);
+  const syncNow = (interactive) => {
+    const D = window.MichaeSDrive;
+    if (!D || !D.available()) return Promise.reject(new Error('unavailable'));
+    if (!isPremium) return Promise.reject(new Error('premium'));
+    if (syncing.current) return Promise.reject(new Error('busy'));
+    syncing.current = true;
+    return D.read(interactive)
+      .then((remote) => {
+        const merged = mergeSync(shelves, tombstones, remote);
+        setShelves(merged.shelves);
+        setTombstones(merged.tombstones);
+        return D.write(buildSyncPayload(merged.shelves, merged.tombstones), interactive);
+      })
+      .then(() => { setLastSync(Date.now()); syncing.current = false; })
+      .catch((e) => { syncing.current = false; throw e; });
+  };
+  // 起動時プル（無音）
+  useEffect(() => {
+    if (hydrated && isPremium && syncOn && !didStartupSync.current) {
+      didStartupSync.current = true;
+      syncNow(false).catch(() => {});
+    }
+  }, [hydrated, isPremium, syncOn]);
+  // 変更後デバウンスpush
+  useEffect(() => {
+    if (!hydrated || !isPremium || !syncOn) return;
+    const D = window.MichaeSDrive;
+    if (!D || !D.available()) return;
+    clearTimeout(pushTimer.current);
+    pushTimer.current = setTimeout(() => { D.write(buildSyncPayload(shelves, tombstones), false).catch(() => {}); }, 2500);
+    return () => clearTimeout(pushTimer.current);
+  }, [shelves, tombstones, hydrated, isPremium, syncOn]);
 
   // 賞味期限リマインドの登録/解除（既に通知許可済みの時だけ。プロンプトは出さない）
   const getExistingSub = async () => {
@@ -633,22 +829,30 @@ function App() {
   // メタが届いたら：表示中カードと、もう棚に入った同URLアイテムの両方を更新
   // （棚の更新はsave効果で自動的にIndexedDBへも反映される）
   const applyMeta = (url, meta) => {
-    if (!meta || (!meta.title && !meta.image && !meta.expireAt)) return;
-    setCurrent((c) =>
-      c && c.kind === 'link' && c.url === url
-        ? { ...c, label: c.label || meta.title || undefined, thumb: c.thumb || meta.image || undefined, expireAt: c.expireAt || meta.expireAt || undefined }
-        : c
-    );
+    if (!meta || (!meta.title && !meta.image && !meta.expireAt && !meta.channel && !meta.ytType)) return;
+    // 既存値は優先、足りないものだけメタで埋める（YouTubeのチャンネル/種別も保存）
+    const merge = (it) => ({
+      ...it,
+      label: it.label || meta.title || undefined,
+      thumb: it.thumb || meta.image || undefined,
+      expireAt: it.expireAt || meta.expireAt || undefined,
+      channel: it.channel || meta.channel || undefined,
+      channelUrl: it.channelUrl || meta.channelUrl || undefined,
+      ytType: it.ytType || meta.ytType || undefined,
+    });
+    const lacks = (it) => !it.label || !it.thumb || (meta.expireAt && !it.expireAt) ||
+      (meta.channel && !it.channel) || (meta.ytType && !it.ytType);
+    setCurrent((c) => (c && c.kind === 'link' && c.url === url ? merge(c) : c));
     let needReminder = false;
     setShelves((p) => {
       let changed = false;
       const next = {};
       Object.keys(p).forEach((k) => {
         next[k] = p[k].map((it) => {
-          if (it.kind === 'link' && it.url === url && (!it.label || !it.thumb || (meta.expireAt && !it.expireAt))) {
+          if (it.kind === 'link' && it.url === url && lacks(it)) {
             changed = true;
             if (meta.expireAt && !it.expireAt) needReminder = true;
-            return { ...it, label: it.label || meta.title || undefined, thumb: it.thumb || meta.image || undefined, expireAt: it.expireAt || meta.expireAt || undefined };
+            return merge(it);
           }
           return it;
         });
@@ -721,6 +925,13 @@ function App() {
     const removed = (shelves[verbId] || []).filter((_, i) => set.has(i));
     setShelves((p) => ({ ...p, [verbId]: (p[verbId] || []).filter((_, i) => !set.has(i)) }));
     removed.forEach((it) => { if (it.kind === 'link' && it.expireAt) unregisterReminder(it); });
+    // 同期用：削除を墓標に記録（画像は同期対象外なので除く）→ 他端末にも削除が伝播
+    const now = Date.now();
+    setTombstones((tomb) => {
+      const next = { ...tomb };
+      removed.forEach((it) => { if (it.kind !== 'image') next[itemSig(it)] = now; });
+      return next;
+    });
   };
 
   const screenStyle = {
@@ -754,6 +965,10 @@ function App() {
             </div>
             <button className="gear-btn" onClick={() => setView('settings')} aria-label="設定">
               <GearIcon />
+            </button>
+            <button className="search-btn" aria-label="もやっと検索"
+              onClick={() => { if (isPremium) setSearchOpen(true); else { setBootUpgrade(true); setView('settings'); } }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
             </button>
           </header>
 
@@ -868,6 +1083,7 @@ function App() {
           {view === 'settings' && (
             <SettingsPage onBack={() => setView(null)} t={t} setTweak={setTweak} onWipeAll={() => setShelves({})} openPremium={bootUpgrade}
               auth={auth} setAuth={setAuth} isPremium={isPremium} refreshSub={refreshSub}
+              syncOn={syncOn} onSyncToggle={setSyncOn} onSyncNow={syncNow} lastSync={lastSync}
               onExport={async () => {
                 const payload = await buildExport(shelves);
                 const n = Object.values(payload.shelves).reduce((a, arr) => a + arr.length, 0);
@@ -888,6 +1104,11 @@ function App() {
                 setShelves(next);
                 return added;
               }} />
+          )}
+
+          {/* もやっと検索（プレミアム） */}
+          {searchOpen && (
+            <MoyaSearch shelves={shelves} session={auth && auth.session} onClose={() => setSearchOpen(false)} />
           )}
         </div>
   );

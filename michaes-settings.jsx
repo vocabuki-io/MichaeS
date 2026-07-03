@@ -130,7 +130,7 @@ function Fold({ title, children }) {
 
 const cycleNext = (list, v) => list[(list.indexOf(v) + 1) % list.length];
 
-function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, openPremium, auth, setAuth, isPremium, refreshSub }) {
+function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, openPremium, auth, setAuth, isPremium, refreshSub, onSyncToggle, onSyncNow, lastSync }) {
   const authUser = auth && auth.user;
   const { useState, useRef, useEffect } = React;
   // コア
@@ -147,6 +147,8 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   const [fontSize, setFontSize] = useState('標準');
   const [theme, setTheme] = useState('自動');
   const [layoutType, setLayoutType] = useState('標準');
+  const [syncEnabled, setSyncEnabled] = useState(false);   // 端末間同期（Drive）
+  const [syncBusy, setSyncBusy] = useState(false);
   // UI
   const [premium, setPremium] = useState(!!openPremium);   // アップグレードシート（LP着地時は開いて出る）
   const [authBusy, setAuthBusy] = useState(false);
@@ -177,6 +179,7 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
         if (s.fontSize) setFontSize(s.fontSize);
         if (s.theme) setTheme(s.theme);
         if (s.layoutType) setLayoutType(s.layoutType);
+        if (typeof s.syncOn === 'boolean') setSyncEnabled(s.syncOn);
       }
     }).catch(() => {}).then(() => setHyd(true));
   }, []);
@@ -184,9 +187,38 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
     if (!hyd) return;
     const st = window.MichaeSStore;
     if (st && st.saveSettings) {
-      st.saveSettings({ resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, fontSize, theme, layoutType });
+      st.saveSettings({ resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, fontSize, theme, layoutType, syncOn: syncEnabled });
     }
-  }, [hyd, resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, fontSize, theme, layoutType]);
+  }, [hyd, resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, fontSize, theme, layoutType, syncEnabled]);
+
+  // ── 端末間同期（Google Drive）操作 ──
+  const handleSyncToggle = async (next) => {
+    if (next) {
+      if (!isPremium) { setPremium(true); return; }
+      if (!(window.MichaeSDrive && window.MichaeSDrive.available())) { flash('この端末では同期を使えません'); return; }
+      setSyncBusy(true);
+      try {
+        if (onSyncNow) await onSyncNow(true);   // 同意ポップアップ→初回プル/マージ/push
+        setSyncEnabled(true);
+        if (onSyncToggle) onSyncToggle(true);
+        flash('端末間同期をオンにした ✦');
+      } catch (e) { flash('連携に失敗しました'); }
+      setSyncBusy(false);
+    } else {
+      setSyncEnabled(false);
+      if (onSyncToggle) onSyncToggle(false);
+      if (window.MichaeSDrive && window.MichaeSDrive.revoke) window.MichaeSDrive.revoke();
+      flash('同期をオフにした');
+    }
+  };
+  const doSyncNow = async () => {
+    if (!isPremium) { setPremium(true); return; }
+    if (!syncEnabled) { flash('先に端末間同期をオンに'); return; }
+    setSyncBusy(true);
+    try { if (onSyncNow) await onSyncNow(true); flash('同期しました ✦'); }
+    catch (e) { flash('同期に失敗しました'); }
+    setSyncBusy(false);
+  };
 
   // テーマ適用（自動=OS追従／ライト／ダーク）
   useEffect(() => {
@@ -481,9 +513,20 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
           <SetRow label="書き出し" sub="Obsidian など" locked={!isPremium} onClick={isPremium ? undefined : () => setPremium(true)}>
             <span className="val-chip dim">{isPremium ? '✦' : 'プレミアム'}</span>
           </SetRow>
-          <SetRow label="同期・容量" locked={!isPremium} onClick={isPremium ? undefined : () => setPremium(true)}>
-            <span className="val-chip dim">{isPremium ? '✦' : 'プレミアム'}</span>
-          </SetRow>
+          {isPremium ? (
+            <SetRow label="端末間同期（Google Drive）" sub="あなた自身のDriveのアプリ専用フォルダに保存。リンク/テキストを端末間で横断">
+              <Toggle on={syncEnabled} onChange={handleSyncToggle} />
+            </SetRow>
+          ) : (
+            <SetRow label="端末間同期（Google Drive）" sub="ログインした端末で棚を横断。データはあなたのDriveに" locked onClick={() => setPremium(true)}>
+              <span className="val-chip dim">プレミアム</span>
+            </SetRow>
+          )}
+          {isPremium && syncEnabled ? (
+            <SetRow label="今すぐ同期" sub={lastSync ? '最終同期 ' + new Date(lastSync).toLocaleString() : 'まだ同期していない'} onClick={syncBusy ? undefined : doSyncNow}>
+              <span className="val-chip dim">{syncBusy ? '同期中…' : '✦'}</span>
+            </SetRow>
+          ) : null}
           <SetRow label="エクスポート" sub="自分のデータは、いつでも持ち出せる" freeBadge onClick={async () => {
             try {
               const n = onExport ? await onExport() : 0;

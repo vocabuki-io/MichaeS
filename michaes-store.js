@@ -90,6 +90,17 @@
         .then(function () {})
         .catch(function () {});
     },
+    // ── 墓標（同期用：削除したアイテムの itemSig -> deletedAt を1レコードで） ──
+    loadTombstones: function () {
+      return withStore('readonly', function (s) { return s.get('tombstones'); })
+        .then(function (v) { return v || {}; })
+        .catch(function () { return {}; });
+    },
+    saveTombstones: function (obj) {
+      return withStore('readwrite', function (s) { return s.put(obj, 'tombstones'); })
+        .then(function () {})
+        .catch(function () {});
+    },
     // ── 認証（プレミアム時のGoogleログイン。{session, user} を1レコードで） ──
     // iOSではIndexedDBがタスクキル/ITPで揮発しうるため localStorage を優先ミラーに。
     loadAuth: function () {

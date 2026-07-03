@@ -468,6 +468,32 @@
     color: var(--ink-soft); cursor: pointer; transition: color .15s ease, transform .15s ease;
   }
   .gear-btn:active { transform: rotate(30deg) scale(.92); color: var(--ink-mid); }
+  .search-btn {
+    position: absolute; top: 54px; left: 14px; width: 44px; height: 44px;
+    display: grid; place-items: center; background: none; border: none;
+    color: var(--ink-soft); cursor: pointer; transition: color .15s ease, transform .15s ease;
+  }
+  .search-btn:active { transform: scale(.92); color: var(--warm); }
+  .moya-dim { position: absolute; inset: 0; background: rgba(42,38,34,.32); display: grid; place-items: start center; padding-top: 64px; z-index: 60; animation: dim-in .2s ease; }
+  .moya { width: min(92%, 360px); max-height: 78%; overflow-y: auto; background: var(--light); border-top: 2px solid var(--gold-soft); border-radius: 20px; padding: 18px 18px 14px; box-shadow: 0 18px 50px rgba(0,0,0,.18); }
+  .moya-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .moya-star { color: var(--gold); font-size: 16px; }
+  .moya-title { margin: 0; flex: 1; font-family: 'Zen Maru Gothic', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: .04em; }
+  .moya-x { background: none; border: none; font-size: 22px; color: var(--ink-soft); cursor: pointer; line-height: 1; padding: 0 4px; }
+  .moya-lead { margin: 0 0 12px; font-size: 12px; color: var(--ink-soft); letter-spacing: .03em; }
+  .moya-inputrow { display: flex; gap: 8px; }
+  .moya-input { flex: 1; border: 1px solid var(--line); border-radius: 999px; padding: 11px 15px; font-family: inherit; font-size: 14px; color: var(--ink); background: #fff; }
+  .moya-input:focus { outline: none; border-color: var(--warm); }
+  .moya-go { border: none; background: linear-gradient(180deg, #FF8C6F, var(--warm)); color: #fff; border-radius: 999px; padding: 0 18px; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  .moya-go:disabled { opacity: .6; }
+  .moya-err { font-size: 12px; color: var(--warm-deep); margin: 10px 0 0; }
+  .moya-note { font-size: 12px; color: var(--ink-soft); margin: 14px 2px; text-align: center; }
+  .moya-results { margin-top: 6px; }
+  .moya-hit { display: block; width: 100%; text-align: left; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-top: 9px; cursor: pointer; }
+  .moya-hit:active { transform: scale(.985); }
+  .moya-hit-title { display: block; font-size: 14px; font-weight: 700; color: var(--ink); letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .moya-hit-meta { display: block; font-size: 11px; color: var(--gold); margin-top: 4px; letter-spacing: .02em; }
+  .moya-priv { font-size: 10px; color: var(--ink-soft); margin: 14px 2px 2px; line-height: 1.5; }
 
   .set-list { gap: 16px; padding-bottom: 16px; }
   .set-group { display: flex; flex-direction: column; gap: 7px; }
@@ -756,6 +782,7 @@
 })();
 </script>
 <script src="michaes-store.js"></script>
+<script src="michaes-drive.js"></script>
 <script type="text/babel" src="ios-frame.jsx"></script>
 <script type="text/babel" src="tweaks-panel.jsx"></script>
 <script type="text/babel" src="michaes-anims.jsx"></script>
