@@ -130,7 +130,7 @@ function Fold({ title, children }) {
 
 const cycleNext = (list, v) => list[(list.indexOf(v) + 1) % list.length];
 
-function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, openPremium, auth, setAuth, isPremium, refreshSub, onSyncToggle, onSyncNow, lastSync }) {
+function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, openPremium, auth, setAuth, isPremium, refreshSub, onSyncToggle, onSyncNow, lastSync, verbs, parseBookmarks, onImportBookmarks }) {
   const authUser = auth && auth.user;
   const { useState, useRef, useEffect } = React;
   // コア
@@ -149,6 +149,8 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   const [layoutType, setLayoutType] = useState('標準');
   const [syncEnabled, setSyncEnabled] = useState(false);   // 端末間同期（Drive）
   const [syncBusy, setSyncBusy] = useState(false);
+  const [bmLinks, setBmLinks] = useState(null);            // 横断インポート：解析済みリンク（棚選択待ち）
+  const bmInputRef = useRef(null);
   // UI
   const [premium, setPremium] = useState(!!openPremium);   // アップグレードシート（LP着地時は開いて出る）
   const [authBusy, setAuthBusy] = useState(false);
@@ -507,9 +509,27 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
         </Fold>
 
         <Fold title="データ">
-          <SetRow label="横断インポート" sub="既存ブクマ・スクショを一括で" locked={!isPremium} onClick={isPremium ? undefined : () => setPremium(true)}>
-            <span className="val-chip dim">{isPremium ? '✦' : 'プレミアム'}</span>
-          </SetRow>
+          {isPremium ? (
+            <SetRow label="横断インポート" sub="ブラウザのブックマーク(HTML)を一括で取り込む" onClick={() => bmInputRef.current && bmInputRef.current.click()}>
+              <span className="val-chip">HTML</span>
+            </SetRow>
+          ) : (
+            <SetRow label="横断インポート" sub="既存ブクマを一括で取り込む" locked onClick={() => setPremium(true)}>
+              <span className="val-chip dim">プレミアム</span>
+            </SetRow>
+          )}
+          <input ref={bmInputRef} type="file" accept=".html,.htm,text/html" style={{ display: 'none' }}
+            onChange={async (e) => {
+              const file = e.target.files && e.target.files[0];
+              e.target.value = '';
+              if (!file) return;
+              try {
+                const html = await file.text();
+                const links = parseBookmarks ? parseBookmarks(html) : [];
+                if (!links.length) { flash('ブックマークが見つからなかった'); return; }
+                setBmLinks(links);
+              } catch (err) { flash('読み込めなかった（HTML形式？）'); }
+            }} />
           <SetRow label="書き出し" sub="Obsidian など" locked={!isPremium} onClick={isPremium ? undefined : () => setPremium(true)}>
             <span className="val-chip dim">{isPremium ? '✦' : 'プレミアム'}</span>
           </SetRow>
@@ -657,6 +677,26 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* 横断インポート：棚選択ダイアログ */}
+      {bmLinks ? (
+        <div className="dialog-dim" onClick={() => setBmLinks(null)}>
+          <div className="dialog" onClick={(e) => e.stopPropagation()}>
+            <p className="dialog-t">{bmLinks.length}件のブックマーク</p>
+            <p className="dialog-s">どの棚に取り込む？</p>
+            <div className="bm-choices">
+              {(verbs || []).map((v) => (
+                <button key={v.id} className="bm-choice" onClick={() => {
+                  const n = onImportBookmarks ? onImportBookmarks(v.id, bmLinks) : 0;
+                  setBmLinks(null);
+                  flash(n > 0 ? n + '件を「' + v.label + '」に取り込んだ' : '新しい項目はなかった');
+                }}>{v.label}</button>
+              ))}
+            </div>
+            <button className="dlg-no" style={{ width: '100%', marginTop: 10 }} onClick={() => setBmLinks(null)}>やめる</button>
           </div>
         </div>
       ) : null}

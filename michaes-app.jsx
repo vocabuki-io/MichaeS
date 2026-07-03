@@ -308,7 +308,7 @@ function mergeSync(localShelves, localTomb, remote) {
     Object.keys(bySig).forEach((sig) => {
       const it = bySig[sig];
       if (it.kind === 'image') { arr.push(it); return; } // 画像はローカル専用で常に残す
-      const del = tomb[sig];
+      const del = tomb[k + '|' + sig];                    // 墓標は棚単位（他棚の同URLは消さない）
       if (del != null && (it.at || 0) <= del) return;     // 削除済み（再追加はatが新しいので残る）
       arr.push(it);
     });
@@ -358,6 +358,28 @@ function classifyText(t) {
 function enrich(it) {
   if (it.kind === 'link') return { ...it, service: detectService(it.url) };
   return it;
+}
+
+// ── 横断インポート：ブラウザのブックマークHTML（Netscape形式）→ {url,title}[] ──
+function decodeHtmlEntities(s) {
+  try { const ta = document.createElement('textarea'); ta.innerHTML = s; return ta.value; }
+  catch (e) { return s; }
+}
+function parseBookmarksHtml(html) {
+  const out = [];
+  const seen = {};
+  const re = /<a\s+[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html))) {
+    const url = (m[1] || '').trim();
+    if (!/^https?:\/\//i.test(url)) continue; // http(s)以外（javascript:/place:/chrome:等）は除外
+    if (seen[url]) continue;
+    seen[url] = 1;
+    let title = (m[2] || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    title = decodeHtmlEntities(title);
+    out.push({ url: url, title: title || url });
+  }
+  return out;
 }
 
 // ── リンクメタ取得（タイトル＋サムネ） ─────────────────
@@ -456,11 +478,12 @@ function ItemBody({ it }) {
   );
 }
 
-function ShelfPage({ verbId, items, onBack, onDelete }) {
+function ShelfPage({ verbId, items, onBack, onDelete, onMove }) {
   const meta = SHELF[verbId];
   const [selMode, setSelMode] = useState(false);
   const [sel, setSel] = useState([]);          // 選択中のindex
   const [confirm, setConfirm] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false); // 移動先の棚選択
   const [note, setNote] = useState('');
   const [viewer, setViewer] = useState(null);  // 画像の全画面ビューア
   const lp = useRef({ timer: null, fired: false });
@@ -610,15 +633,22 @@ function ShelfPage({ verbId, items, onBack, onDelete }) {
       {note ? <div className="shelf-note">{note}</div> : null}
 
       {selMode ? (
-        /* 選択モード：親指圏のアクションバー */
-        <div className="sel-bar">
-          <button className="sel-all" onClick={toggleAll} disabled={items.length === 0}>
-            {allSelected ? 'ぜんぶ解除' : 'ぜんぶ選ぶ'}
-          </button>
-          <button className="sel-del" onClick={() => setConfirm(true)} disabled={sel.length === 0}>
-            手放す{sel.length ? '（' + sel.length + '）' : ''}
-          </button>
-          <button className="sel-cancel" onClick={cancelSel}>やめる</button>
+        /* 選択モード：親指圏のアクションバー（上=補助 / 下=主操作 の2段で崩れ防止） */
+        <div className="sel-bar sel-bar-2">
+          <div className="sel-bar-top">
+            <button className="sel-all" onClick={toggleAll} disabled={items.length === 0}>
+              {allSelected ? 'ぜんぶ解除' : 'ぜんぶ選ぶ'}
+            </button>
+            <button className="sel-cancel" onClick={cancelSel}>やめる</button>
+          </div>
+          <div className="sel-bar-main">
+            <button className="sel-move" onClick={() => setMoveOpen(true)} disabled={sel.length === 0}>
+              移動{sel.length ? '（' + sel.length + '）' : ''}
+            </button>
+            <button className="sel-del" onClick={() => setConfirm(true)} disabled={sel.length === 0}>
+              手放す{sel.length ? '（' + sel.length + '）' : ''}
+            </button>
+          </div>
         </div>
       ) : (
         /* ホームへ戻る：親指圏の円ボタン */
@@ -638,6 +668,26 @@ function ShelfPage({ verbId, items, onBack, onDelete }) {
         <div className="viewer" onClick={() => setViewer(null)}>
           <img className="viewer-img" src={viewer.src} alt="" />
           <button className="viewer-close" onClick={() => setViewer(null)} aria-label="閉じる">×</button>
+        </div>
+      ) : null}
+
+      {/* 移動先の棚を選ぶ */}
+      {moveOpen ? (
+        <div className="dialog-dim" onClick={() => setMoveOpen(false)}>
+          <div className="dialog" onClick={(e) => e.stopPropagation()}>
+            <p className="dialog-t">{sel.length}件を移動</p>
+            <p className="dialog-s">どの棚へ？</p>
+            <div className="bm-choices">
+              {VERBS.filter((v) => v.id !== verbId).map((v) => (
+                <button key={v.id} className="bm-choice" onClick={() => {
+                  const n = onMove ? onMove(verbId, sel, v.id) : 0;
+                  setMoveOpen(false); setSelMode(false); setSel([]);
+                  flash(n > 0 ? '「' + v.label + '」へ移した' : '移せなかった');
+                }}>{v.label}</button>
+              ))}
+            </div>
+            <button className="dlg-no" style={{ width: '100%', marginTop: 10 }} onClick={() => setMoveOpen(false)}>やめる</button>
+          </div>
         </div>
       ) : null}
 
@@ -925,13 +975,54 @@ function App() {
     const removed = (shelves[verbId] || []).filter((_, i) => set.has(i));
     setShelves((p) => ({ ...p, [verbId]: (p[verbId] || []).filter((_, i) => !set.has(i)) }));
     removed.forEach((it) => { if (it.kind === 'link' && it.expireAt) unregisterReminder(it); });
-    // 同期用：削除を墓標に記録（画像は同期対象外なので除く）→ 他端末にも削除が伝播
+    // 同期用：削除を墓標に記録（棚単位 verbId|itemSig。画像は同期対象外なので除く）→ 他端末にも伝播
     const now = Date.now();
     setTombstones((tomb) => {
       const next = { ...tomb };
-      removed.forEach((it) => { if (it.kind !== 'image') next[itemSig(it)] = now; });
+      removed.forEach((it) => { if (it.kind !== 'image') next[verbId + '|' + itemSig(it)] = now; });
       return next;
     });
+  };
+
+  // 移動：選択を別の棚へ（元棚から除去＋先棚へ重複排除で追加、元棚に墓標）。移動件数を返す
+  const moveToShelf = (fromVerbId, idxs, toVerbId) => {
+    if (!toVerbId || fromVerbId === toVerbId) return 0;
+    const set = new Set(idxs);
+    const moving = (shelves[fromVerbId] || []).filter((_, i) => set.has(i));
+    if (!moving.length) return 0;
+    const now = Date.now();
+    const next = { ...shelves };
+    next[fromVerbId] = (next[fromVerbId] || []).filter((_, i) => !set.has(i));
+    const dest = (next[toVerbId] || []).slice();
+    const seen = new Set(dest.map(itemSig));
+    let moved = 0;
+    moving.forEach((it) => { const sig = itemSig(it); if (!seen.has(sig)) { dest.push(it); seen.add(sig); moved++; } });
+    next[toVerbId] = dest;
+    setShelves(next);
+    // 元棚からの削除だけ墓標に（先棚には墓標を付けない＝移動先で消えない）
+    setTombstones((tomb) => {
+      const t = { ...tomb };
+      moving.forEach((it) => { if (it.kind !== 'image') t[fromVerbId + '|' + itemSig(it)] = now; });
+      return t;
+    });
+    return moved;
+  };
+
+  // 横断インポート：選んだ棚へリンクを一括追加（itemSigで重複排除）。追加件数を返す
+  const importBookmarks = (verbId, links) => {
+    const next = { ...shelves };
+    const cur = next[verbId] ? next[verbId].slice() : [];
+    const seen = new Set(cur.map(itemSig));
+    const now = Date.now();
+    let added = 0;
+    (links || []).forEach((lk, i) => {
+      const it = enrich({ kind: 'link', url: lk.url, label: lk.title, at: now + i });
+      const sig = itemSig(it);
+      if (!seen.has(sig)) { cur.push(it); seen.add(sig); added++; }
+    });
+    next[verbId] = cur;
+    setShelves(next);
+    return added;
   };
 
   const screenStyle = {
@@ -1076,7 +1167,7 @@ function App() {
 
           {/* 棚ページ（出口画面） */}
           {view && view !== 'settings' && (
-            <ShelfPage verbId={view} items={shelves[view] || []} onBack={() => setView(null)} onDelete={deleteFromShelf} />
+            <ShelfPage verbId={view} items={shelves[view] || []} onBack={() => setView(null)} onDelete={deleteFromShelf} onMove={moveToShelf} />
           )}
 
           {/* 設定画面 */}
@@ -1084,6 +1175,7 @@ function App() {
             <SettingsPage onBack={() => setView(null)} t={t} setTweak={setTweak} onWipeAll={() => setShelves({})} openPremium={bootUpgrade}
               auth={auth} setAuth={setAuth} isPremium={isPremium} refreshSub={refreshSub}
               syncOn={syncOn} onSyncToggle={setSyncOn} onSyncNow={syncNow} lastSync={lastSync}
+              verbs={VERBS} parseBookmarks={parseBookmarksHtml} onImportBookmarks={importBookmarks}
               onExport={async () => {
                 const payload = await buildExport(shelves);
                 const n = Object.values(payload.shelves).reduce((a, arr) => a + arr.length, 0);
