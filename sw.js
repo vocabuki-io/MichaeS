@@ -5,7 +5,7 @@
 //   - 同一オリジンのシェル資産は cache-first
 //   - CDN（unpkg の React/Babel）と Google Fonts は cache-first（バージョン付きURLなので安全）
 //   - 更新は VERSION を上げる → 旧キャッシュは activate で掃除
-const VERSION = 'michaes-v29';
+const VERSION = 'michaes-v30';
 const SHELL_CACHE = VERSION + '-shell';
 const RUNTIME_CACHE = VERSION + '-runtime';
 
@@ -118,17 +118,70 @@ function pickFortune() {
   return FORTUNES[Math.floor(Math.random() * FORTUNES.length)];
 }
 
+// ── 再浮上: IndexedDB(michaes/kv)から棚と設定を読み、SW側で「見返す1件」を選ぶ ──
+// （保存内容はサーバーに出さず、この端末のIDBだけで完結）
+function idbGet(key) {
+  return new Promise((resolve) => {
+    let req;
+    try { req = indexedDB.open('michaes', 1); } catch (e) { resolve(null); return; }
+    req.onupgradeneeded = () => { try { const db = req.result; if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv'); } catch (e) {} };
+    req.onsuccess = () => {
+      try {
+        const db = req.result;
+        const tx = db.transaction('kv', 'readonly');
+        const rq = tx.objectStore('kv').get(key);
+        rq.onsuccess = () => resolve(rq.result);
+        rq.onerror = () => resolve(null);
+      } catch (e) { resolve(null); }
+    };
+    req.onerror = () => resolve(null);
+  });
+}
+function rsfTitle(it) {
+  if (!it) return '';
+  if (it.kind === 'image') return '画像';
+  if (it.kind === 'link') return (it.label || it.url || 'リンク');
+  return ((it.text || '').split('\n')[0] || 'メモ').slice(0, 40);
+}
+async function showResurface() {
+  const shelves = (await idbGet('shelves')) || {};
+  const settings = (await idbGet('settings')) || {};
+  if (settings.resurface === false) return; // OFF中の誤爆防止（二重ガード）
+  const perDayMap = { 'おまかせ': 1, '1件': 1, '3件': 3 };
+  const n = perDayMap[settings.perDay] || 1;
+  const all = [];
+  Object.keys(shelves).forEach((k) => (shelves[k] || []).forEach((it) => all.push(it)));
+  const DAY = 86400000, now = Date.now();
+  let title = 'ミカエス ・ 再浮上', body;
+  if (!all.length) {
+    body = '何か貼って、あとで見返そう ✦';
+  } else {
+    // 「冷めかけ（1日以上前）」を優先プールにしてランダム（毎回同じにならない）
+    let pool = all.filter((it) => now - (it.at || 0) > DAY);
+    if (!pool.length) pool = all.slice();
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+    const pick = pool.slice(0, n);
+    const first = rsfTitle(pick[0]);
+    body = pick.length <= 1
+      ? '「' + first + '」、そろそろ見返す？'
+      : '「' + first + '」ほか' + (pick.length - 1) + '件、温かいうちに';
+  }
+  await self.registration.showNotification(title, {
+    body: body, icon: 'icon-192.png', badge: 'icon-192.png',
+    tag: 'michaes-resurface', data: { url: './index.html' },
+  });
+}
+
 self.addEventListener('push', (e) => {
+  let data = null;
+  if (e.data) { try { data = e.data.json(); } catch (x) { data = null; } }
+  // 再浮上の合図 → 中身はSWがIDBから選ぶ
+  if (data && data.type === 'resurface') { e.waitUntil(showResurface()); return; }
+  // それ以外は占い（{title,body} or ペイロードレス）
   let title = 'ミカエス';
   let body = pickFortune();
-  if (e.data) {
-    try {
-      const d = e.data.json();           // 新Worker: { title, body }
-      if (d && (d.title || d.body)) { title = d.title || title; body = d.body || body; }
-    } catch (x) {
-      try { const t = e.data.text(); if (t) body = t; } catch (y) {}  // 旧形式/素テキスト
-    }
-  }
+  if (data && (data.title || data.body)) { title = data.title || title; body = data.body || body; }
+  else if (e.data && !data) { try { const t = e.data.text(); if (t) body = t; } catch (y) {} }
   e.waitUntil(self.registration.showNotification(title, {
     body: body,
     icon: 'icon-192.png',

@@ -395,6 +395,62 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
     if (fortuneOn) registerDaily(nextTime);
   };
 
+  // ── 再浮上（コア機能）: pushを登録/解除。通知の中身はSWがIndexedDBから選ぶ（サーバーに保存内容を出さない） ──
+  const RSF_HOUR = { '深夜帯': 22, '通勤帯': 8, 'いつでも': 12 };
+  const registerResurface = async (windowLabel) => {
+    if (!window.MICHAES_PUSH_ENDPOINT || !window.MICHAES_VAPID_PUBLIC) { flash('配信先が未設定'); return false; }
+    const sub = await ensureSubscription();
+    if (!sub) return false;
+    try {
+      const r = await fetch(window.MICHAES_PUSH_ENDPOINT + '/resurface', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON ? sub.toJSON() : sub, hour: RSF_HOUR[windowLabel] != null ? RSF_HOUR[windowLabel] : 12 }),
+      });
+      return r.ok;
+    } catch (e) { return false; }
+  };
+  const unregisterResurface = async () => {
+    if (!window.MICHAES_PUSH_ENDPOINT) return;
+    try {
+      if (!('serviceWorker' in navigator)) return;
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) await fetch(window.MICHAES_PUSH_ENDPOINT + '/unresurface', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      });
+    } catch (e) {}
+  };
+  const onResurfaceToggle = async (next) => {
+    if (next) {
+      const ok = await registerResurface(notifWindow);
+      if (ok) { setResurface(true); flash('再浮上をオンにした ✦'); }
+      else { setResurface(false); /* ensureSubscription側でflash済み */ }
+    } else {
+      setResurface(false);
+      unregisterResurface();
+      flash('再浮上をオフにした');
+    }
+  };
+  const onNotifWindowChange = () => {
+    const nx = cycleNext(['深夜帯', '通勤帯', 'いつでも'], notifWindow);
+    setNotifWindow(nx);
+    if (resurface) registerResurface(nx);
+  };
+  // 再浮上プレビュー: 実際のpush経路で {type:'resurface'} を数秒後に送る（SWがIDBから1件選ぶ）
+  const previewResurface = async () => {
+    if (!window.MICHAES_PUSH_ENDPOINT || !window.MICHAES_VAPID_PUBLIC) { flash('配信先が未設定'); return; }
+    try {
+      const sub = await ensureSubscription();
+      if (!sub) return;
+      const r = await fetch(window.MICHAES_PUSH_ENDPOINT + '/test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON ? sub.toJSON() : sub, payload: { type: 'resurface' }, delay: 4000 }),
+      });
+      if (r.ok) flash('4秒後に届く。ロックして待ってて ✦'); else flash('プレビューに失敗（' + r.status + '）');
+    } catch (e) { flash('プレビューに失敗'); }
+  };
+
   const scheduleBackgroundPush = async (msg) => {
     try {
       if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
@@ -450,14 +506,19 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
 
         <SetGroup title="再浮上 と 通知">
           <SetRow label="再浮上" sub="温かいうちに、そっと出し直す">
-            <Toggle on={resurface} onChange={setResurface} />
+            <Toggle on={resurface} onChange={onResurfaceToggle} />
           </SetRow>
           <SetRow label="1日に出す件数" onClick={() => setPerDay(cycleNext(['おまかせ', '1件', '3件'], perDay))}>
             <span className="val-chip">{perDay}{perDay === 'おまかせ' ? '（少数）' : ''}</span>
           </SetRow>
-          <SetRow label="通知の時間帯" onClick={() => setNotifWindow(cycleNext(['深夜帯', '通勤帯', 'いつでも'], notifWindow))}>
+          <SetRow label="通知の時間帯" onClick={onNotifWindowChange}>
             <span className="val-chip">{notifWindow}</span>
           </SetRow>
+          {resurface ? (
+            <SetRow label="再浮上をのぞく" sub="いま棚から、通知で1件出してみる" onClick={previewResurface}>
+              <span className="val-chip dim">✦</span>
+            </SetRow>
+          ) : null}
           <SetRow label="賞味期限の通知" sub="期限つきリンクの何日前に知らせるか" onClick={() => setRemindDays(cycleNext(['当日', '前日', '3日前', '1週間前'], remindDays))}>
             <span className="val-chip">{remindDays}</span>
           </SetRow>
