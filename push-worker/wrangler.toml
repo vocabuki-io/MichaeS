@@ -1,0 +1,43 @@
+# push-worker/wrangler.toml — ミカエス Push配信 Worker の設定
+# デプロイ: このディレクトリで `wrangler deploy` (本番) / `wrangler deploy --env dev` (開発)
+
+name = "michaes-push"
+main = "worker.js"
+compatibility_date = "2026-07-01"
+
+# 毎時0分に起動して、そのJST時刻が配信時刻の購読者へ送る
+[triggers]
+crons = ["0 * * * *"]
+
+# 購読レコードの置き場。`wrangler kv namespace create PUSH_KV` で作ってIDを貼る
+[[kv_namespaces]]
+binding = "PUSH_KV"
+id = "★本番のKV namespace ID★"
+
+[vars]
+VAPID_SUBJECT = "mailto:dragxonx3@gmail.com"
+
+# 本番: push.michae-s.com をこのWorkerに割り当てる
+[[routes]]
+pattern = "push.michae-s.com"
+custom_domain = true
+
+# ── 開発環境（push-dev.michae-s.com）──
+[env.dev]
+name = "michaes-push-dev"
+
+[[env.dev.kv_namespaces]]
+binding = "PUSH_KV"
+id = "★開発のKV namespace ID★"
+
+[env.dev.vars]
+VAPID_SUBJECT = "mailto:dragxonx3@gmail.com"
+
+[[env.dev.routes]]
+pattern = "push-dev.michae-s.com"
+custom_domain = true
+
+# シークレット（tomlには書かない）:
+#   wrangler secret put VAPID_PUBLIC_KEY            … index.html の MICHAES_VAPID_PUBLIC と同じ値
+#   wrangler secret put VAPID_PRIVATE_KEY           … その対の秘密鍵（base64url）
+#   （devにも同様に --env dev を付けて設定）
