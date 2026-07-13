@@ -721,6 +721,7 @@ function App() {
   const [pulseVerb, setPulseVerb] = useState(null);
   const [view, setView] = useState(null);       // 棚ページ（verbId）
   const [whoText, setWhoText] = useState('');
+  const [writeText, setWriteText] = useState(''); // ペースト玉の下の直接入力
   const [bootUpgrade, setBootUpgrade] = useState(false); // LPの「プレミアムにする」からの着地
   const [auth, setAuth] = useState(null);                // {session, user}（App保持＝設定の開閉で消えない）
   const [isPremium, setIsPremium] = useState(false);     // Stripe購読が有効か
@@ -913,15 +914,8 @@ function App() {
     if (needReminder) registerReminder({ kind: 'link', url, expireAt: meta.expireAt, label: meta.title || url });
   };
 
-  const paste = async () => {
-    if (phase !== 'idle') return;
-    let it = await readClipboard();
-    if (it) {
-      it = enrich(it);
-    } else {
-      setPhase('empty');
-      return;
-    }
+  // 貼った/書いたものを開く共通処理
+  const openItem = (it) => {
     setCurrent(it);
     setPhase('open');
     // 裏でタイトル＋サムネを取りに行く（貼った瞬間の体験は止めない）
@@ -929,6 +923,22 @@ function App() {
       const url = it.url;
       fetchMeta(url).then((meta) => applyMeta(url, meta));
     }
+  };
+
+  const paste = async () => {
+    if (phase !== 'idle') return;
+    const it = await readClipboard();
+    if (!it) { setPhase('empty'); return; }
+    openItem(enrich(it));
+  };
+
+  // 直接入力：ペーストと同じ道へ（URLならリンク、Markdownらしければメモ扱い）
+  const writeIn = () => {
+    if (phase !== 'idle') return;
+    const s = writeText.trim();
+    if (!s) return;
+    setWriteText('');
+    openItem(enrich(classifyText(s)));
   };
 
   const finish = (msg, verbId) => {
@@ -1066,12 +1076,32 @@ function App() {
           {/* 中央ステージ */}
           <main className="stage">
             {phase === 'idle' && (
-              <button className="orb" onClick={paste} data-comment-anchor="center-tap">
-                <span className="orb-halo" aria-hidden="true"></span>
-                <span className="orb-star">✦</span>
-                <span className="orb-label">ペースト</span>
-                <span className="orb-hint">コピーしたものを、ここに貼る</span>
-              </button>
+              <div className="idle-wrap">
+                <button className="orb" onClick={paste} data-comment-anchor="center-tap">
+                  <span className="orb-halo" aria-hidden="true"></span>
+                  <span className="orb-star">✦</span>
+                  <span className="orb-label">ペースト</span>
+                  <span className="orb-hint">コピーしたものを、ここに貼る</span>
+                </button>
+                <form className="write-form" onSubmit={(e) => { e.preventDefault(); writeIn(); }}>
+                  <textarea
+                    className="write-input"
+                    rows={1}
+                    placeholder="または、ここに書いて残す"
+                    value={writeText}
+                    onChange={(e) => {
+                      setWriteText(e.target.value);
+                      e.target.style.height = 'auto';
+                      e.target.style.height = Math.min(e.target.scrollHeight, 96) + 'px';
+                    }}
+                    onKeyDown={(e) => {
+                      // 変換確定のEnterでは送らない。Shift+Enterは改行
+                      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); writeIn(); }
+                    }}
+                  />
+                  <button type="submit" className="write-go" aria-label="残す" disabled={!writeText.trim()}>✦</button>
+                </form>
+              </div>
             )}
 
             {phase === 'open' && current && (
