@@ -783,10 +783,9 @@ function App() {
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     const store = window.MichaeSStore;
-    // テーマ適用（設定を一度も開いていなくても効くよう、起動時に反映。既定=自動でOS追従）
-    const applyTheme = (t) => { try { document.documentElement.setAttribute('data-theme', { '自動': 'auto', 'ライト': 'light', 'ダーク': 'dark' }[t] || 'auto'); } catch (e) {} };
-    if (store && store.loadSettings) store.loadSettings().then((s) => { applyTheme(s && s.theme); if (s && typeof s.syncOn === 'boolean') setSyncOn(s.syncOn); }).catch(() => applyTheme('自動'));
-    else applyTheme('自動');
+    // 常にライト表示に固定（ダークモード/OS追従は廃止）
+    try { document.documentElement.setAttribute('data-theme', 'light'); } catch (e) {}
+    if (store && store.loadSettings) store.loadSettings().then((s) => { if (s && typeof s.syncOn === 'boolean') setSyncOn(s.syncOn); }).catch(() => {});
     if (store && store.loadTombstones) store.loadTombstones().then((t) => { if (t && Object.keys(t).length) setTombstones(t); }).catch(() => {});
     if (!store) { setHydrated(true); return; }
     store.load()

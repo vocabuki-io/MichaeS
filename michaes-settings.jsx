@@ -14,7 +14,7 @@ function urlB64ToUint8(base64) {
 }
 
 // アプリのバージョン。リリース（ソース変更を配布）ごとに patch を上げる。
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 
 function GearIcon({ size = 21 }) {
   const st = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
@@ -104,9 +104,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   // 折りたたみ内
   const [shareBtn, setShareBtn] = useState(true);
   const [screenshotPull, setScreenshotPull] = useState(false);
-  const [fontSize, setFontSize] = useState('標準');
-  const [theme, setTheme] = useState('自動');
-  const [layoutType, setLayoutType] = useState('標準');
   const [syncEnabled, setSyncEnabled] = useState(false);   // 端末間同期（Drive）
   const [syncBusy, setSyncBusy] = useState(false);
   const [bmLinks, setBmLinks] = useState(null);            // 横断インポート：解析済みリンク（棚選択待ち）
@@ -137,9 +134,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
         if (s.fortuneTime) setFortuneTime(s.fortuneTime);
         if (typeof s.shareBtn === 'boolean') setShareBtn(s.shareBtn);
         if (typeof s.screenshotPull === 'boolean') setScreenshotPull(s.screenshotPull);
-        if (s.fontSize) setFontSize(s.fontSize);
-        if (s.theme) setTheme(s.theme);
-        if (s.layoutType) setLayoutType(s.layoutType);
         if (typeof s.syncOn === 'boolean') setSyncEnabled(s.syncOn);
       }
     }).catch(() => {}).then(() => setHyd(true));
@@ -148,9 +142,9 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
     if (!hyd) return;
     const st = window.MichaeSStore;
     if (st && st.saveSettings) {
-      st.saveSettings({ resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, fontSize, theme, layoutType, syncOn: syncEnabled });
+      st.saveSettings({ resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, syncOn: syncEnabled });
     }
-  }, [hyd, resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, fontSize, theme, layoutType, syncEnabled]);
+  }, [hyd, resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, syncEnabled]);
 
   // ── 端末間同期（Google Drive）操作 ──
   const handleSyncToggle = async (next) => {
@@ -180,11 +174,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
     catch (e) { flash('同期に失敗しました'); }
     setSyncBusy(false);
   };
-
-  // テーマ適用（自動=OS追従／ライト／ダーク）
-  useEffect(() => {
-    try { document.documentElement.setAttribute('data-theme', { '自動': 'auto', 'ライト': 'light', 'ダーク': 'dark' }[theme] || 'auto'); } catch (e) {}
-  }, [theme]);
 
   const flash = (m) => {
     setNote(m);
@@ -538,15 +527,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
               </div>
             </div>
           </div>
-          <SetRow label="文字サイズ" onClick={() => setFontSize(cycleNext(['標準', '大きめ', '小さめ'], fontSize))}>
-            <span className="val-chip">{fontSize}</span>
-          </SetRow>
-          <SetRow label="テーマ" sub="自動はOSの設定に追従" onClick={() => setTheme(cycleNext(['自動', 'ライト', 'ダーク'], theme))}>
-            <span className="val-chip">{theme}</span>
-          </SetRow>
-          <SetRow label="レイアウトタイプ" sub="左利き・大型端末はここから" onClick={() => setLayoutType(cycleNext(['標準', '左利き', '大型端末'], layoutType))}>
-            <span className="val-chip">{layoutType}</span>
-          </SetRow>
         </Fold>
 
         <Fold title="その他">
