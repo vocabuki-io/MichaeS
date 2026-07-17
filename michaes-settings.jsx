@@ -14,7 +14,7 @@ function urlB64ToUint8(base64) {
 }
 
 // アプリのバージョン。リリース（ソース変更を配布）ごとに patch を上げる。
-const APP_VERSION = '1.0.4';
+const APP_VERSION = '1.0.5';
 
 function GearIcon({ size = 21 }) {
   const st = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
@@ -176,15 +176,37 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   // ── Googleログイン（プレミアム導線でのみ使用） ──
   // 復元はApp側で起動時に実施（authUserはpropsで受け取る）
 
-  // IDトークンを受け取り→API検証→保存
-  const handleCredential = (credential) => {
+  // ── 統一ログイン（認可コードフロー）: 認証(identity)とDrive権限(drive.appdata)を
+  //    一度の同意で取得。サーバーがcodeをrefresh token込みで交換し、以後の同期は
+  //    サーバー発行のDriveトークンで動くため「同期のたびに再ログイン」が起きない。──
+  const startCodeLogin = () => {
+    const cid = window.MICHAES_GOOGLE_CLIENT_ID;
+    const oauth2 = window.google && window.google.accounts && window.google.accounts.oauth2;
+    if (!cid || !oauth2) { flash('Googleが読み込めていない'); return; }
+    try {
+      const codeClient = oauth2.initCodeClient({
+        client_id: cid,
+        scope: 'openid email profile https://www.googleapis.com/auth/drive.appdata',
+        ux_mode: 'popup',
+        callback: (resp) => {
+          if (resp && resp.code) handleAuthResponse({ code: resp.code });
+          else flash('ログインをキャンセルしました');
+        },
+      });
+      codeClient.requestCode();
+    } catch (e) { flash('ログインを開始できませんでした'); }
+  };
+
+  // IDトークン（従来）または認可コード（統一）を受け取り→API検証→保存
+  const handleCredential = (credential) => handleAuthResponse({ credential });
+  const handleAuthResponse = (payload) => {
     const ep = window.MICHAES_API_ENDPOINT;
     if (!ep) { flash('APIエンドポイント未設定'); return; }
     setAuthBusy(true);
     fetch(ep + '/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ credential }),
+      body: JSON.stringify(payload),
     })
       .then((r) => r.json())
       .then((d) => {
@@ -205,6 +227,13 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   };
 
   const signOut = () => {
+    const ep = window.MICHAES_API_ENDPOINT;
+    const session = auth && auth.session;
+    // 統一フロー: サーバー保持のrefresh tokenも破棄してもらう（ベストエフォート）
+    if (window.MICHAES_UNIFIED_AUTH && ep && session) {
+      try { fetch(ep + '/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + session } }).catch(() => {}); } catch (e) {}
+    }
+    try { if (window.MichaeSDrive && window.MichaeSDrive.revoke) window.MichaeSDrive.revoke(); } catch (e) {}
     setAuth(null);
     const st = window.MichaeSStore;
     if (st && st.clearAuth) st.clearAuth();
@@ -235,7 +264,7 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   // プレミアムシートが開いて未ログインのとき、Googleボタンを描画
   const gbtnRef = useRef(null);
   useEffect(() => {
-    if (!premium || authUser) return;
+    if (!premium || authUser || window.MICHAES_UNIFIED_AUTH) return; // 統一時はGISボタンを使わない
     const cid = window.MICHAES_GOOGLE_CLIENT_ID;
     if (!cid) return;
     let tries = 0;
@@ -562,7 +591,9 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
             ) : (
               <div className="prem-auth" key="signed-out">
                 <p className="prem-auth-lead">プレミアムは端末をまたいで使えるよう、Googleでログインします。</p>
-                <div className="gbtn-wrap" ref={gbtnRef} />
+                {window.MICHAES_UNIFIED_AUTH
+                  ? <button className="dlg-yes gold" onClick={startCodeLogin}>Googleでログイン</button>
+                  : <div className="gbtn-wrap" ref={gbtnRef} />}
                 {authBusy ? <p className="prem-auth-busy">確認中…</p> : null}
                 <div className="dialog-btns">
                   <button className="dlg-no" onClick={() => setPremium(false)}>いまはいい</button>

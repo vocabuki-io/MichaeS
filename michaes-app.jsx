@@ -736,6 +736,14 @@ function App() {
     if (!st || !st.loadAuth) return;
     st.loadAuth().then((a) => { if (a && a.user) setAuth(a); });
   }, []);
+  // 統一フロー: 現在のセッションをDrive同期モジュールへ渡す（サーバーがDriveトークンを発行する）
+  const authRef = useRef(null);
+  useEffect(() => { authRef.current = auth; }, [auth]);
+  useEffect(() => {
+    if (window.MichaeSDrive && window.MichaeSDrive.setAuthProvider) {
+      window.MichaeSDrive.setAuthProvider(() => authRef.current && authRef.current.session);
+    }
+  }, []);
   // 購読状態の取得
   const refreshSub = (session) => {
     const ep = window.MICHAES_API_ENDPOINT;

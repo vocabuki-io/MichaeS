@@ -18,11 +18,39 @@
   var tokenClient = null;
   var token = null, tokenExp = 0;
   var pending = null; // { resolve, reject }
+  var getSession = null; // 統一フロー用：現在のセッショントークンを返す関数（App側から注入）
 
   function clientId() { return window.MICHAES_GOOGLE_CLIENT_ID || ''; }
   function gisOAuth() { return window.google && window.google.accounts && window.google.accounts.oauth2; }
+  function unified() { return !!window.MICHAES_UNIFIED_AUTH; }
+  function apiEndpoint() { return window.MICHAES_API_ENDPOINT || ''; }
+  function sessionToken() { try { return getSession && getSession(); } catch (e) { return null; } }
+  function setAuthProvider(fn) { getSession = fn; }
 
-  function available() { return !!(gisOAuth() && clientId()); }
+  // 統一フロー: サーバーが保持する refresh token から Drive アクセストークンを発行してもらう。
+  // Googleのポップアップは一切出ない（=起動時でも無音で取得できる）。プレミアムのログインで
+  // 認証とDrive権限を同時に取得済みなので、同期のたびに再ログインを求められない。
+  function fetchServerToken() {
+    var ep = apiEndpoint(), s = sessionToken();
+    if (!ep || !s) return Promise.reject(new Error('no_session'));
+    return fetch(ep + '/drive/token', { headers: { Authorization: 'Bearer ' + s } })
+      .then(function (r) {
+        if (r.status === 401 || r.status === 403) throw new Error('reauth'); // refresh失効等 → 要再ログイン
+        if (!r.ok) throw new Error('drive_token ' + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        if (!d || !d.access_token) throw new Error('no_token');
+        token = d.access_token;
+        tokenExp = Date.now() + (((d.expires_in || 3600) - 60) * 1000);
+        return token;
+      });
+  }
+
+  function available() {
+    if (unified()) return !!(apiEndpoint() && sessionToken());
+    return !!(gisOAuth() && clientId());
+  }
 
   function initClient() {
     if (tokenClient) return tokenClient;
@@ -51,7 +79,9 @@
 
   function ensureToken(interactive) {
     if (token && Date.now() < tokenExp) return Promise.resolve(token);
-    // 非対話（起動時プル・自動push）では絶対に同意ポップアップを出さない。
+    // 統一フロー: サーバー発行トークンを使う（ポップアップ皆無・起動時も無音でOK）。
+    if (unified()) return fetchServerToken();
+    // 従来フロー（GISトークンクライアント直）: 非対話では絶対に同意ポップアップを出さない。
     // GISのアクセストークンはページ再読込で消えるため、メモリにトークンが無ければ静かにスキップし、
     // ユーザーが「今すぐ同期」等を操作した時（interactive=true＝ユーザー操作起点）だけポップアップを出す。
     // こうしないと、起動のたびにブラウザのポップアップ許可プロンプトが出てしまう。
@@ -137,5 +167,5 @@
 
   function revoke() { token = null; tokenExp = 0; }
 
-  window.MichaeSDrive = { available: available, read: read, write: write, revoke: revoke };
+  window.MichaeSDrive = { available: available, read: read, write: write, revoke: revoke, setAuthProvider: setAuthProvider };
 })();
