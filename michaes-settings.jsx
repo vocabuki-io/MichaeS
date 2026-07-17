@@ -1,6 +1,6 @@
 // michaes-settings.jssx → michaes-settings.jsx — ミカエス 設定画面（ミニマル）
 // 仕様: uploads/MichaeS_settings_spec.md / 占い: uploads/MichaeS_today_fortune.md
-// 核（アカウント・再浮上と通知・入れる・今日の占い）だけ常時表示、他は折りたたみ。
+// 核（アカウント・再浮上と通知・今日の占い）だけ常時表示、他は折りたたみ。
 // プレミアムはロック行 → アップグレードシート。エクスポートは無料保証(⭐)。
 
 // VAPID公開鍵(base64url) → Uint8Array（applicationServerKey用）
@@ -13,48 +13,8 @@ function urlB64ToUint8(base64) {
   return out;
 }
 
-const FORTUNES = [
-  '今日は、寄り道した先にいいことがある。',
-  '迷ったら、軽い方を選ぶと流れに乗れる日。',
-  '小さく動くほど、運が味方する。',
-  '昨日の自分に、少し優しくしていい一日。',
-  '今日拾う偶然は、あとで効いてくる。',
-  '急がない人に、いい知らせが届く日。',
-  'ひと息つくと、答えが向こうから来る。',
-  '今日は「やめておく」も正解になる。',
-  '誰かのひと言が、背中をそっと押す日。',
-  '好きな色を身につけると、調子が出る。',
-  '遠回りが、いちばんの近道になる一日。',
-  '今日は受け取り上手でいるといい。',
-  '小さな「ありがとう」が運を連れてくる。',
-  '気になったものは、見に行っていい日。',
-  '今日は早めに休むと、明日が軽い。',
-  '手放したぶんだけ、いいものが入る。',
-  '笑った回数が、そのまま運になる日。',
-  '今日のひらめきは、メモしておくと吉。',
-  'ゆっくり歩くと、いい景色に気づく。',
-  '今日は自分を甘やかしていい日。',
-  '迷子の時間も、ちゃんと意味になる。',
-  '今日は初めての道を選ぶと楽しい。',
-  '温かい飲み物が、いい流れを呼ぶ。',
-  '言いそびれた言葉を、今日は言える。',
-  '小さな整理が、大きな安心になる日。',
-  '今日は人に頼ると、うまく回る。',
-  '期待しすぎないほうが、うれしい日。',
-  '目についた本に、ヒントが隠れてる。',
-  '今日は深呼吸ひとつで流れが変わる。',
-  'やりたいことを、ひとつだけ叶える日。',
-  '今日は静かな時間が味方になる。',
-  'ふと思い出した人に、いい縁がある。',
-  '今日は「まあいっか」がお守りになる。',
-  '散歩の途中に、小さな発見がある日。',
-  '今日は丁寧にいれたお茶がよく合う。',
-  '焦らず待つと、ちょうどよく届く。',
-  '今日のあなたの選択は、たぶん正しい。',
-  '窓を開けると、いい風が入ってくる日。',
-  '今日は誰かを褒めると、自分も上がる。',
-  '眠る前のひと言「おつかれ」が効く。',
-];
+// アプリのバージョン。リリース（ソース変更を配布）ごとに patch を上げる。
+const APP_VERSION = '1.0.5';
 
 function GearIcon({ size = 21 }) {
   const st = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
@@ -138,15 +98,8 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   const [perDay, setPerDay] = useState('おまかせ');
   const [notifWindow, setNotifWindow] = useState('深夜帯');
   const [remindDays, setRemindDays] = useState('3日前');
-  const [pasteOnOpen, setPasteOnOpen] = useState(true);
   const [fortuneOn, setFortuneOn] = useState(true);
   const [fortuneTime, setFortuneTime] = useState('朝 8時ごろ');
-  // 折りたたみ内
-  const [shareBtn, setShareBtn] = useState(true);
-  const [screenshotPull, setScreenshotPull] = useState(false);
-  const [fontSize, setFontSize] = useState('標準');
-  const [theme, setTheme] = useState('自動');
-  const [layoutType, setLayoutType] = useState('標準');
   const [syncEnabled, setSyncEnabled] = useState(false);   // 端末間同期（Drive）
   const [syncBusy, setSyncBusy] = useState(false);
   const [bmLinks, setBmLinks] = useState(null);            // 横断インポート：解析済みリンク（棚選択待ち）
@@ -155,7 +108,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   const [premium, setPremium] = useState(!!openPremium);   // アップグレードシート（LP着地時は開いて出る）
   const [authBusy, setAuthBusy] = useState(false);
   const [wipe, setWipe] = useState(false);         // 全削除ダイアログ
-  const [banner, setBanner] = useState(null);      // 占い通知プレビュー
   const [note, setNote] = useState('');
   const timers = useRef([]);
   const importRef = useRef(null);
@@ -173,14 +125,8 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
         if (s.perDay) setPerDay(s.perDay);
         if (s.notifWindow) setNotifWindow(s.notifWindow);
         if (s.remindDays) setRemindDays(s.remindDays);
-        if (typeof s.pasteOnOpen === 'boolean') setPasteOnOpen(s.pasteOnOpen);
         if (typeof s.fortuneOn === 'boolean') setFortuneOn(s.fortuneOn);
         if (s.fortuneTime) setFortuneTime(s.fortuneTime);
-        if (typeof s.shareBtn === 'boolean') setShareBtn(s.shareBtn);
-        if (typeof s.screenshotPull === 'boolean') setScreenshotPull(s.screenshotPull);
-        if (s.fontSize) setFontSize(s.fontSize);
-        if (s.theme) setTheme(s.theme);
-        if (s.layoutType) setLayoutType(s.layoutType);
         if (typeof s.syncOn === 'boolean') setSyncEnabled(s.syncOn);
       }
     }).catch(() => {}).then(() => setHyd(true));
@@ -189,9 +135,9 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
     if (!hyd) return;
     const st = window.MichaeSStore;
     if (st && st.saveSettings) {
-      st.saveSettings({ resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, fontSize, theme, layoutType, syncOn: syncEnabled });
+      st.saveSettings({ resurface, perDay, notifWindow, remindDays, fortuneOn, fortuneTime, syncOn: syncEnabled });
     }
-  }, [hyd, resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, fontSize, theme, layoutType, syncEnabled]);
+  }, [hyd, resurface, perDay, notifWindow, remindDays, fortuneOn, fortuneTime, syncEnabled]);
 
   // ── 端末間同期（Google Drive）操作 ──
   const handleSyncToggle = async (next) => {
@@ -222,11 +168,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
     setSyncBusy(false);
   };
 
-  // テーマ適用（自動=OS追従／ライト／ダーク）
-  useEffect(() => {
-    try { document.documentElement.setAttribute('data-theme', { '自動': 'auto', 'ライト': 'light', 'ダーク': 'dark' }[theme] || 'auto'); } catch (e) {}
-  }, [theme]);
-
   const flash = (m) => {
     setNote(m);
     later(() => setNote(''), 1400);
@@ -235,15 +176,37 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   // ── Googleログイン（プレミアム導線でのみ使用） ──
   // 復元はApp側で起動時に実施（authUserはpropsで受け取る）
 
-  // IDトークンを受け取り→API検証→保存
-  const handleCredential = (credential) => {
+  // ── 統一ログイン（認可コードフロー）: 認証(identity)とDrive権限(drive.appdata)を
+  //    一度の同意で取得。サーバーがcodeをrefresh token込みで交換し、以後の同期は
+  //    サーバー発行のDriveトークンで動くため「同期のたびに再ログイン」が起きない。──
+  const startCodeLogin = () => {
+    const cid = window.MICHAES_GOOGLE_CLIENT_ID;
+    const oauth2 = window.google && window.google.accounts && window.google.accounts.oauth2;
+    if (!cid || !oauth2) { flash('Googleが読み込めていない'); return; }
+    try {
+      const codeClient = oauth2.initCodeClient({
+        client_id: cid,
+        scope: 'openid email profile https://www.googleapis.com/auth/drive.appdata',
+        ux_mode: 'popup',
+        callback: (resp) => {
+          if (resp && resp.code) handleAuthResponse({ code: resp.code });
+          else flash('ログインをキャンセルしました');
+        },
+      });
+      codeClient.requestCode();
+    } catch (e) { flash('ログインを開始できませんでした'); }
+  };
+
+  // IDトークン（従来）または認可コード（統一）を受け取り→API検証→保存
+  const handleCredential = (credential) => handleAuthResponse({ credential });
+  const handleAuthResponse = (payload) => {
     const ep = window.MICHAES_API_ENDPOINT;
     if (!ep) { flash('APIエンドポイント未設定'); return; }
     setAuthBusy(true);
     fetch(ep + '/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ credential }),
+      body: JSON.stringify(payload),
     })
       .then((r) => r.json())
       .then((d) => {
@@ -264,6 +227,13 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   };
 
   const signOut = () => {
+    const ep = window.MICHAES_API_ENDPOINT;
+    const session = auth && auth.session;
+    // 統一フロー: サーバー保持のrefresh tokenも破棄してもらう（ベストエフォート）
+    if (window.MICHAES_UNIFIED_AUTH && ep && session) {
+      try { fetch(ep + '/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + session } }).catch(() => {}); } catch (e) {}
+    }
+    try { if (window.MichaeSDrive && window.MichaeSDrive.revoke) window.MichaeSDrive.revoke(); } catch (e) {}
     setAuth(null);
     const st = window.MichaeSStore;
     if (st && st.clearAuth) st.clearAuth();
@@ -294,7 +264,7 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   // プレミアムシートが開いて未ログインのとき、Googleボタンを描画
   const gbtnRef = useRef(null);
   useEffect(() => {
-    if (!premium || authUser) return;
+    if (!premium || authUser || window.MICHAES_UNIFIED_AUTH) return; // 統一時はGISボタンを使わない
     const cid = window.MICHAES_GOOGLE_CLIENT_ID;
     if (!cid) return;
     let tries = 0;
@@ -312,17 +282,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
     render();
   }, [premium, authUser]);
 
-
-  const previewFortune = () => {
-    if (!fortuneOn) return;
-    const msg = FORTUNES[Math.floor(Math.random() * FORTUNES.length)];
-    setBanner(msg);
-    later(() => setBanner(null), 3400);
-    // Pushエンドポイントが設定されていれば、同じ一言を30秒後にバックグラウンド通知
-    if (window.MICHAES_PUSH_ENDPOINT && window.MICHAES_VAPID_PUBLIC) {
-      scheduleBackgroundPush(msg);
-    }
-  };
 
   // ── Push購読の共通取得（許可→購読） ──
   const ensureSubscription = async () => {
@@ -437,52 +396,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
     setNotifWindow(nx);
     if (resurface) registerResurface(nx);
   };
-  // 再浮上プレビュー: 実際のpush経路で {type:'resurface'} を数秒後に送る（SWがIDBから1件選ぶ）
-  const previewResurface = async () => {
-    if (!window.MICHAES_PUSH_ENDPOINT || !window.MICHAES_VAPID_PUBLIC) { flash('配信先が未設定'); return; }
-    try {
-      const sub = await ensureSubscription();
-      if (!sub) return;
-      const r = await fetch(window.MICHAES_PUSH_ENDPOINT + '/test', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscription: sub.toJSON ? sub.toJSON() : sub, payload: { type: 'resurface' }, delay: 4000 }),
-      });
-      if (r.ok) flash('4秒後に届く。ロックして待ってて ✦'); else flash('プレビューに失敗（' + r.status + '）');
-    } catch (e) { flash('プレビューに失敗'); }
-  };
-
-  const scheduleBackgroundPush = async (msg) => {
-    try {
-      if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
-        flash('この端末はPush非対応'); return;
-      }
-      const perm = await Notification.requestPermission();
-      if (perm !== 'granted') { flash('通知が許可されなかった'); return; }
-      const reg = await navigator.serviceWorker.ready;
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) {
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlB64ToUint8(window.MICHAES_VAPID_PUBLIC),
-        });
-      }
-      const r = await fetch(window.MICHAES_PUSH_ENDPOINT + '/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subscription: sub.toJSON ? sub.toJSON() : sub,
-          title: 'ミカエス',
-          body: msg,
-          delay: 30000,
-        }),
-      });
-      if (r.ok) flash('30秒後に届く。ロックして待ってて ✦');
-      else flash('予約に失敗（' + r.status + '）');
-    } catch (e) {
-      flash('Push予約に失敗');
-    }
-  };
-
   const tone = Math.round(((t.lightBeam + t.goldAmount) / 2) * 100) / 100;
   const setTone = (v) => setTweak({ lightBeam: v, goldAmount: v });
 
@@ -514,34 +427,12 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
           <SetRow label="通知の時間帯" onClick={onNotifWindowChange}>
             <span className="val-chip">{notifWindow}</span>
           </SetRow>
-          {resurface ? (
-            <SetRow label="再浮上をのぞく" sub="いま棚から、通知で1件出してみる" onClick={previewResurface}>
-              <span className="val-chip dim">✦</span>
-            </SetRow>
-          ) : null}
           <SetRow label="賞味期限の通知" sub="期限つきリンクの何日前に知らせるか" onClick={() => setRemindDays(cycleNext(['当日', '前日', '3日前', '1週間前'], remindDays))}>
             <span className="val-chip">{remindDays}</span>
           </SetRow>
           <SetRow label="詳細ルール" sub="感覚 × 時間帯 × 場所 × イヤホン" locked={!isPremium} onClick={isPremium ? undefined : () => setPremium(true)}>
             <span className="val-chip dim">{isPremium ? '✦' : 'プレミアム'}</span>
           </SetRow>
-        </SetGroup>
-
-        <SetGroup title="入れる">
-          <SetRow label="起動時に「コピー中」を出す" sub="開いた瞬間、貼るだけにする">
-            <Toggle on={pasteOnOpen} onChange={setPasteOnOpen} />
-          </SetRow>
-          <Fold title="くわしく">
-            <SetRow label="クリップボード読取の許可" sub="OSの設定で管理">
-              <span className="val-chip dim">許可済み</span>
-            </SetRow>
-            <SetRow label="共有ボタン（Android）">
-              <Toggle on={shareBtn} onChange={setShareBtn} />
-            </SetRow>
-            <SetRow label="スクショ吸い上げ">
-              <Toggle on={screenshotPull} onChange={setScreenshotPull} />
-            </SetRow>
-          </Fold>
         </SetGroup>
 
         <SetGroup title="今日の占い">
@@ -553,19 +444,11 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
               <span className="val-chip">{fortuneTime}</span>
             </SetRow>
           ) : null}
-          {fortuneOn ? (
-            <SetRow label="通知をのぞいてみる" sub="今日の一枚を引く（プレビュー）" onClick={previewFortune}>
-              <span className="val-chip dim">✦</span>
-            </SetRow>
-          ) : null}
         </SetGroup>
 
         <Fold title="出口の接続">
           <SetRow label="ツカウ箱の送り先" sub="プロジェクト / 外部連携">
             <span className="val-chip dim">未接続</span>
-          </SetRow>
-          <SetRow label="ミセルの相手リスト" sub="あゆむ、乃々瀬">
-            <span className="val-chip">2人</span>
           </SetRow>
         </Fold>
 
@@ -649,45 +532,22 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
               </div>
             </div>
           </div>
-          <SetRow label="文字サイズ" onClick={() => setFontSize(cycleNext(['標準', '大きめ', '小さめ'], fontSize))}>
-            <span className="val-chip">{fontSize}</span>
-          </SetRow>
-          <SetRow label="テーマ" sub="自動はOSの設定に追従" onClick={() => setTheme(cycleNext(['自動', 'ライト', 'ダーク'], theme))}>
-            <span className="val-chip">{theme}</span>
-          </SetRow>
-          <SetRow label="レイアウトタイプ" sub="左利き・大型端末はここから" onClick={() => setLayoutType(cycleNext(['標準', '左利き', '大型端末'], layoutType))}>
-            <span className="val-chip">{layoutType}</span>
-          </SetRow>
         </Fold>
 
         <Fold title="その他">
           <SetRow label="プライバシー" sub="ローカル優先 ・ 権限の管理">
             <span className="val-chip dim">ローカル</span>
           </SetRow>
-          <SetRow label="ヘルプ / フィードバック" onClick={() => flash('ありがとう。届いた（プロトタイプ）')}>
-            <span className="val-chip dim">›</span>
-          </SetRow>
           <SetRow label="利用規約・プライバシー" onClick={() => window.open('rule.html', '_blank', 'noopener')}>
             <span className="val-chip dim">›</span>
           </SetRow>
           <SetRow label="バージョン">
-            <span className="val-chip dim">0.3.0 試作</span>
+            <span className="val-chip dim">{APP_VERSION}</span>
           </SetRow>
         </Fold>
       </div>
 
       {note ? <div className="shelf-note">{note}</div> : null}
-
-      {/* 占い通知プレビュー（iOSバナー風） */}
-      {banner ? (
-        <div className="notif" role="status">
-          <span className="notif-ico">✦</span>
-          <span className="notif-body">
-            <span className="notif-t">ミカエス ・ 今日の占い</span>
-            <span className="notif-x">{banner}</span>
-          </span>
-        </div>
-      ) : null}
 
       {/* ホームへ戻る */}
       <div className="shelf-foot">
@@ -731,7 +591,9 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
             ) : (
               <div className="prem-auth" key="signed-out">
                 <p className="prem-auth-lead">プレミアムは端末をまたいで使えるよう、Googleでログインします。</p>
-                <div className="gbtn-wrap" ref={gbtnRef} />
+                {window.MICHAES_UNIFIED_AUTH
+                  ? <button className="dlg-yes gold" onClick={startCodeLogin}>Googleでログイン</button>
+                  : <div className="gbtn-wrap" ref={gbtnRef} />}
                 {authBusy ? <p className="prem-auth-busy">確認中…</p> : null}
                 <div className="dialog-btns">
                   <button className="dlg-no" onClick={() => setPremium(false)}>いまはいい</button>
@@ -779,4 +641,4 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   );
 }
 
-Object.assign(window, { SettingsPage, GearIcon, FORTUNES });
+Object.assign(window, { SettingsPage, GearIcon });

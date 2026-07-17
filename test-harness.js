@@ -48,7 +48,9 @@ async function boot({ clipboardText } = {}) {
 
   for (const f of FILES) {
     const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
-    const out = babel.transformSync(src, { presets: [['@babel/preset-react']], filename: f }).code;
+    // ブラウザ側は <script type="text/babel">（Babel standalone = classic runtime）で動くので合わせる。
+    // automatic runtimeだと jsx-runtime の import が吐かれ、この素の eval では動かない。
+    const out = babel.transformSync(src, { presets: [['@babel/preset-react', { runtime: 'classic' }]], filename: f }).code;
     const React = window.React, ReactDOM = window.ReactDOM;
     try {
       new Function('window', 'document', 'navigator', 'React', 'ReactDOM', 'indexedDB', 'CustomEvent',
@@ -149,15 +151,7 @@ function click(window, el) {
   click(window, q(window, '.gear-btn'));
   await flush(80);
   ok('設定が開く', !!q(window, '.settings'));
-  // 占いプレビュー
-  const fortuneRow = qa(window, '.set-row.tappable').find(b => b.textContent.includes('通知をのぞいてみる'));
-  ok('占いプレビュー行がある', !!fortuneRow);
-  if (fortuneRow) {
-    click(window, fortuneRow);
-    await flush(60);
-    const notif = q(window, '.notif-x');
-    ok('占いバナーが出る（50字以内）', !!notif && notif.textContent.length <= 50, notif && notif.textContent);
-  }
+  ok('占いの配信行がある', qa(window, '.set-row').some(b => b.textContent.includes('配信')));
   // 全削除フロー
   const folds = qa(window, '.fold-head');
   const dataFold = folds.find(b => b.textContent.includes('データ'));
@@ -174,16 +168,17 @@ function click(window, el) {
   const total = Object.values(saved4 || {}).reduce((n, a) => n + (a ? a.length : 0), 0);
   ok('全削除がIndexedDBにも反映', total === 0, JSON.stringify(saved4));
 
-  console.log('== 10. store未読込ガード（クラッシュしない） ==');
-  ;({ window } = await boot({ clipboardText: 'x' }));
-  delete window.MichaeSStore;
-  // 既にマウント済みのものとは別に、ガードコードの再評価はできないので、ここでは
-  // 「store有り」で正常起動済みである事実 + コード上のガードで担保。代わりにクリップボード無しの起動を試す。
-  ;({ window } = await boot({}));  // clipboard undefined → デモにフォールバック
+  console.log('== 10. クリップボード不可 → 空っぽ画面（クラッシュしない） ==');
+  ;({ window } = await boot({}));  // clipboard undefined → 空っぽ画面へ
   await flush(120);
   click(window, q(window, '.orb'));
   await flush(120);
-  ok('クリップボード不可ならデモにフォールバック', !!q(window, '.item-card'));
+  ok('クリップボード不可なら空っぽ画面', !!q(window, '.empty') && !q(window, '.item-card'),
+    (q(window, '.top-sub') || {}).textContent);
+  // 「もう一度」で待機に戻れる
+  const again = q(window, '.again');
+  ok('やり直しボタンがある', !!again);
+  if (again) { click(window, again); await flush(60); ok('待機に戻る', !!q(window, '.orb')); }
 
   console.log('\n結果: pass=' + pass + ' fail=' + fail);
   process.exit(fail ? 1 : 0);

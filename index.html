@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -833,6 +833,11 @@
   window.MICHAES_API_ENDPOINT  = PROD ? 'https://api.michae-s.com'  : 'https://api-dev.michae-s.com';
   window.MICHAES_VAPID_PUBLIC = 'BAhHi5zYA_tg3woTGLSuwFVHL6q77m3ibFpIqMNeFdpV89e-PwLzbz6ieJiUGygUsY69l4L5b5xpbYbXtpcdcEg';
   window.MICHAES_GOOGLE_CLIENT_ID = '960451114883-9iu8k7jj8ntpqkl8usr9v82pn6b4a4fu.apps.googleusercontent.com';
+  // 統一ログイン（認証＋Drive権限を1回の同意で取得し、同期のたびの再ログインを解消）。
+  // 有効化の前提: api側が /auth/google の code 交換・refresh token 保持・/drive/token 発行・/auth/logout に対応していること。
+  // 段階移行: まず dev(api-dev) を対応させ「PROD ? false : true」で preview 検証 → 本番対応後に両方 true。
+  // 詳細手順は docs/UNIFIED-AUTH-SERVER.md 参照。
+  window.MICHAES_UNIFIED_AUTH = PROD ? false : false;
 })();
 </script>
 <script src="michaes-store.js"></script>

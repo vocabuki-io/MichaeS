@@ -736,6 +736,14 @@ function App() {
     if (!st || !st.loadAuth) return;
     st.loadAuth().then((a) => { if (a && a.user) setAuth(a); });
   }, []);
+  // 統一フロー: 現在のセッションをDrive同期モジュールへ渡す（サーバーがDriveトークンを発行する）
+  const authRef = useRef(null);
+  useEffect(() => { authRef.current = auth; }, [auth]);
+  useEffect(() => {
+    if (window.MichaeSDrive && window.MichaeSDrive.setAuthProvider) {
+      window.MichaeSDrive.setAuthProvider(() => authRef.current && authRef.current.session);
+    }
+  }, []);
   // 購読状態の取得
   const refreshSub = (session) => {
     const ep = window.MICHAES_API_ENDPOINT;
@@ -783,10 +791,9 @@ function App() {
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     const store = window.MichaeSStore;
-    // テーマ適用（設定を一度も開いていなくても効くよう、起動時に反映。既定=自動でOS追従）
-    const applyTheme = (t) => { try { document.documentElement.setAttribute('data-theme', { '自動': 'auto', 'ライト': 'light', 'ダーク': 'dark' }[t] || 'auto'); } catch (e) {} };
-    if (store && store.loadSettings) store.loadSettings().then((s) => { applyTheme(s && s.theme); if (s && typeof s.syncOn === 'boolean') setSyncOn(s.syncOn); }).catch(() => applyTheme('自動'));
-    else applyTheme('自動');
+    // 常にライト表示に固定（ダークモード/OS追従は廃止）
+    try { document.documentElement.setAttribute('data-theme', 'light'); } catch (e) {}
+    if (store && store.loadSettings) store.loadSettings().then((s) => { if (s && typeof s.syncOn === 'boolean') setSyncOn(s.syncOn); }).catch(() => {});
     if (store && store.loadTombstones) store.loadTombstones().then((t) => { if (t && Object.keys(t).length) setTombstones(t); }).catch(() => {});
     if (!store) { setHydrated(true); return; }
     store.load()
@@ -1062,7 +1069,7 @@ function App() {
             <div className="top-sub">
               {phase === 'empty'
                 ? 'クリップボードは空っぽ'
-                : '開いた今が、いちばん温かい'}
+                : 'なにをみかえす？'}
             </div>
             <button className="gear-btn" onClick={() => setView('settings')} aria-label="設定">
               <GearIcon />
@@ -1081,13 +1088,13 @@ function App() {
                   <span className="orb-halo" aria-hidden="true"></span>
                   <span className="orb-star">✦</span>
                   <span className="orb-label">ペースト</span>
-                  <span className="orb-hint">コピーしたものを、ここに貼る</span>
+                  <span className="orb-hint">ここに張り付け</span>
                 </button>
                 <form className="write-form" onSubmit={(e) => { e.preventDefault(); writeIn(); }}>
                   <textarea
                     className="write-input"
                     rows={1}
-                    placeholder="または、ここに書いて残す"
+                    placeholder="ここに書いて残す"
                     value={writeText}
                     onChange={(e) => {
                       setWriteText(e.target.value);
@@ -1120,7 +1127,7 @@ function App() {
                   </div>
                   <ItemBody it={current} />
                 </div>
-                <p className="must-one">必ずひとつ。それか、いらない</p>
+                <p className="must-one">ひとつずつ記録しよう</p>
               </div>
             )}
 
@@ -1163,7 +1170,7 @@ function App() {
                 <div className="empty-halo" aria-hidden="true"></div>
                 <div className="empty-star">✦</div>
                 <p className="empty-line">クリップボードは空っぽ</p>
-                <button className="again" onClick={reset}>コピーして、また来た（もう一度）</button>
+                <button className="again" onClick={reset}>コピーして、貼り付けよう</button>
               </div>
             )}
           </main>
@@ -1191,7 +1198,7 @@ function App() {
             {sorting ? (
               <button className="discard on" onClick={discard}>いらない（手放す）</button>
             ) : (
-              <p className={'zone-hint' + (nav ? ' on' : '')}>ボタンで棚をのぞける</p>
+              <p className={'zone-hint' + (nav ? ' on' : '')}>ボタンで棚をみよう</p>
             )}
           </footer>
 
