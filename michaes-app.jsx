@@ -1062,7 +1062,7 @@ function App() {
             <div className="top-sub">
               {phase === 'empty'
                 ? 'クリップボードは空っぽ'
-                : '開いた今が、いちばん温かい'}
+                : 'なにをみかえす？'}
             </div>
             <button className="gear-btn" onClick={() => setView('settings')} aria-label="設定">
               <GearIcon />
@@ -1081,13 +1081,13 @@ function App() {
                   <span className="orb-halo" aria-hidden="true"></span>
                   <span className="orb-star">✦</span>
                   <span className="orb-label">ペースト</span>
-                  <span className="orb-hint">コピーしたものを、ここに貼る</span>
+                  <span className="orb-hint">ここに張り付け</span>
                 </button>
                 <form className="write-form" onSubmit={(e) => { e.preventDefault(); writeIn(); }}>
                   <textarea
                     className="write-input"
                     rows={1}
-                    placeholder="または、ここに書いて残す"
+                    placeholder="ここに書いて残す"
                     value={writeText}
                     onChange={(e) => {
                       setWriteText(e.target.value);
@@ -1120,7 +1120,7 @@ function App() {
                   </div>
                   <ItemBody it={current} />
                 </div>
-                <p className="must-one">必ずひとつ。それか、いらない</p>
+                <p className="must-one">ひとつずつ記録しよう</p>
               </div>
             )}
 
@@ -1163,7 +1163,7 @@ function App() {
                 <div className="empty-halo" aria-hidden="true"></div>
                 <div className="empty-star">✦</div>
                 <p className="empty-line">クリップボードは空っぽ</p>
-                <button className="again" onClick={reset}>コピーして、また来た（もう一度）</button>
+                <button className="again" onClick={reset}>コピーして、貼り付けよう</button>
               </div>
             )}
           </main>
@@ -1191,7 +1191,7 @@ function App() {
             {sorting ? (
               <button className="discard on" onClick={discard}>いらない（手放す）</button>
             ) : (
-              <p className={'zone-hint' + (nav ? ' on' : '')}>ボタンで棚をのぞける</p>
+              <p className={'zone-hint' + (nav ? ' on' : '')}>ボタンで棚をみよう</p>
             )}
           </footer>
 

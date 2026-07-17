@@ -13,48 +13,8 @@ function urlB64ToUint8(base64) {
   return out;
 }
 
-const FORTUNES = [
-  '今日は、寄り道した先にいいことがある。',
-  '迷ったら、軽い方を選ぶと流れに乗れる日。',
-  '小さく動くほど、運が味方する。',
-  '昨日の自分に、少し優しくしていい一日。',
-  '今日拾う偶然は、あとで効いてくる。',
-  '急がない人に、いい知らせが届く日。',
-  'ひと息つくと、答えが向こうから来る。',
-  '今日は「やめておく」も正解になる。',
-  '誰かのひと言が、背中をそっと押す日。',
-  '好きな色を身につけると、調子が出る。',
-  '遠回りが、いちばんの近道になる一日。',
-  '今日は受け取り上手でいるといい。',
-  '小さな「ありがとう」が運を連れてくる。',
-  '気になったものは、見に行っていい日。',
-  '今日は早めに休むと、明日が軽い。',
-  '手放したぶんだけ、いいものが入る。',
-  '笑った回数が、そのまま運になる日。',
-  '今日のひらめきは、メモしておくと吉。',
-  'ゆっくり歩くと、いい景色に気づく。',
-  '今日は自分を甘やかしていい日。',
-  '迷子の時間も、ちゃんと意味になる。',
-  '今日は初めての道を選ぶと楽しい。',
-  '温かい飲み物が、いい流れを呼ぶ。',
-  '言いそびれた言葉を、今日は言える。',
-  '小さな整理が、大きな安心になる日。',
-  '今日は人に頼ると、うまく回る。',
-  '期待しすぎないほうが、うれしい日。',
-  '目についた本に、ヒントが隠れてる。',
-  '今日は深呼吸ひとつで流れが変わる。',
-  'やりたいことを、ひとつだけ叶える日。',
-  '今日は静かな時間が味方になる。',
-  'ふと思い出した人に、いい縁がある。',
-  '今日は「まあいっか」がお守りになる。',
-  '散歩の途中に、小さな発見がある日。',
-  '今日は丁寧にいれたお茶がよく合う。',
-  '焦らず待つと、ちょうどよく届く。',
-  '今日のあなたの選択は、たぶん正しい。',
-  '窓を開けると、いい風が入ってくる日。',
-  '今日は誰かを褒めると、自分も上がる。',
-  '眠る前のひと言「おつかれ」が効く。',
-];
+// アプリのバージョン。リリース（ソース変更を配布）ごとに patch を上げる。
+const APP_VERSION = '1.0.1';
 
 function GearIcon({ size = 21 }) {
   const st = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
@@ -155,7 +115,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   const [premium, setPremium] = useState(!!openPremium);   // アップグレードシート（LP着地時は開いて出る）
   const [authBusy, setAuthBusy] = useState(false);
   const [wipe, setWipe] = useState(false);         // 全削除ダイアログ
-  const [banner, setBanner] = useState(null);      // 占い通知プレビュー
   const [note, setNote] = useState('');
   const timers = useRef([]);
   const importRef = useRef(null);
@@ -313,17 +272,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   }, [premium, authUser]);
 
 
-  const previewFortune = () => {
-    if (!fortuneOn) return;
-    const msg = FORTUNES[Math.floor(Math.random() * FORTUNES.length)];
-    setBanner(msg);
-    later(() => setBanner(null), 3400);
-    // Pushエンドポイントが設定されていれば、同じ一言を30秒後にバックグラウンド通知
-    if (window.MICHAES_PUSH_ENDPOINT && window.MICHAES_VAPID_PUBLIC) {
-      scheduleBackgroundPush(msg);
-    }
-  };
-
   // ── Push購読の共通取得（許可→購読） ──
   const ensureSubscription = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
@@ -437,52 +385,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
     setNotifWindow(nx);
     if (resurface) registerResurface(nx);
   };
-  // 再浮上プレビュー: 実際のpush経路で {type:'resurface'} を数秒後に送る（SWがIDBから1件選ぶ）
-  const previewResurface = async () => {
-    if (!window.MICHAES_PUSH_ENDPOINT || !window.MICHAES_VAPID_PUBLIC) { flash('配信先が未設定'); return; }
-    try {
-      const sub = await ensureSubscription();
-      if (!sub) return;
-      const r = await fetch(window.MICHAES_PUSH_ENDPOINT + '/test', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscription: sub.toJSON ? sub.toJSON() : sub, payload: { type: 'resurface' }, delay: 4000 }),
-      });
-      if (r.ok) flash('4秒後に届く。ロックして待ってて ✦'); else flash('プレビューに失敗（' + r.status + '）');
-    } catch (e) { flash('プレビューに失敗'); }
-  };
-
-  const scheduleBackgroundPush = async (msg) => {
-    try {
-      if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
-        flash('この端末はPush非対応'); return;
-      }
-      const perm = await Notification.requestPermission();
-      if (perm !== 'granted') { flash('通知が許可されなかった'); return; }
-      const reg = await navigator.serviceWorker.ready;
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) {
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlB64ToUint8(window.MICHAES_VAPID_PUBLIC),
-        });
-      }
-      const r = await fetch(window.MICHAES_PUSH_ENDPOINT + '/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subscription: sub.toJSON ? sub.toJSON() : sub,
-          title: 'ミカエス',
-          body: msg,
-          delay: 30000,
-        }),
-      });
-      if (r.ok) flash('30秒後に届く。ロックして待ってて ✦');
-      else flash('予約に失敗（' + r.status + '）');
-    } catch (e) {
-      flash('Push予約に失敗');
-    }
-  };
-
   const tone = Math.round(((t.lightBeam + t.goldAmount) / 2) * 100) / 100;
   const setTone = (v) => setTweak({ lightBeam: v, goldAmount: v });
 
@@ -514,11 +416,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
           <SetRow label="通知の時間帯" onClick={onNotifWindowChange}>
             <span className="val-chip">{notifWindow}</span>
           </SetRow>
-          {resurface ? (
-            <SetRow label="再浮上をのぞく" sub="いま棚から、通知で1件出してみる" onClick={previewResurface}>
-              <span className="val-chip dim">✦</span>
-            </SetRow>
-          ) : null}
           <SetRow label="賞味期限の通知" sub="期限つきリンクの何日前に知らせるか" onClick={() => setRemindDays(cycleNext(['当日', '前日', '3日前', '1週間前'], remindDays))}>
             <span className="val-chip">{remindDays}</span>
           </SetRow>
@@ -553,19 +450,11 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
               <span className="val-chip">{fortuneTime}</span>
             </SetRow>
           ) : null}
-          {fortuneOn ? (
-            <SetRow label="通知をのぞいてみる" sub="今日の一枚を引く（プレビュー）" onClick={previewFortune}>
-              <span className="val-chip dim">✦</span>
-            </SetRow>
-          ) : null}
         </SetGroup>
 
         <Fold title="出口の接続">
           <SetRow label="ツカウ箱の送り先" sub="プロジェクト / 外部連携">
             <span className="val-chip dim">未接続</span>
-          </SetRow>
-          <SetRow label="ミセルの相手リスト" sub="あゆむ、乃々瀬">
-            <span className="val-chip">2人</span>
           </SetRow>
         </Fold>
 
@@ -664,30 +553,16 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
           <SetRow label="プライバシー" sub="ローカル優先 ・ 権限の管理">
             <span className="val-chip dim">ローカル</span>
           </SetRow>
-          <SetRow label="ヘルプ / フィードバック" onClick={() => flash('ありがとう。届いた（プロトタイプ）')}>
-            <span className="val-chip dim">›</span>
-          </SetRow>
           <SetRow label="利用規約・プライバシー" onClick={() => window.open('rule.html', '_blank', 'noopener')}>
             <span className="val-chip dim">›</span>
           </SetRow>
           <SetRow label="バージョン">
-            <span className="val-chip dim">0.3.0 試作</span>
+            <span className="val-chip dim">{APP_VERSION}</span>
           </SetRow>
         </Fold>
       </div>
 
       {note ? <div className="shelf-note">{note}</div> : null}
-
-      {/* 占い通知プレビュー（iOSバナー風） */}
-      {banner ? (
-        <div className="notif" role="status">
-          <span className="notif-ico">✦</span>
-          <span className="notif-body">
-            <span className="notif-t">ミカエス ・ 今日の占い</span>
-            <span className="notif-x">{banner}</span>
-          </span>
-        </div>
-      ) : null}
 
       {/* ホームへ戻る */}
       <div className="shelf-foot">
@@ -779,4 +654,4 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   );
 }
 
-Object.assign(window, { SettingsPage, GearIcon, FORTUNES });
+Object.assign(window, { SettingsPage, GearIcon });

@@ -151,15 +151,7 @@ function click(window, el) {
   click(window, q(window, '.gear-btn'));
   await flush(80);
   ok('設定が開く', !!q(window, '.settings'));
-  // 占いプレビュー
-  const fortuneRow = qa(window, '.set-row.tappable').find(b => b.textContent.includes('通知をのぞいてみる'));
-  ok('占いプレビュー行がある', !!fortuneRow);
-  if (fortuneRow) {
-    click(window, fortuneRow);
-    await flush(60);
-    const notif = q(window, '.notif-x');
-    ok('占いバナーが出る（50字以内）', !!notif && notif.textContent.length <= 50, notif && notif.textContent);
-  }
+  ok('占いの配信行がある', qa(window, '.set-row').some(b => b.textContent.includes('配信')));
   // 全削除フロー
   const folds = qa(window, '.fold-head');
   const dataFold = folds.find(b => b.textContent.includes('データ'));
