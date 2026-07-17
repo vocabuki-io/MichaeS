@@ -1,6 +1,6 @@
 // michaes-settings.jssx → michaes-settings.jsx — ミカエス 設定画面（ミニマル）
 // 仕様: uploads/MichaeS_settings_spec.md / 占い: uploads/MichaeS_today_fortune.md
-// 核（アカウント・再浮上と通知・入れる・今日の占い）だけ常時表示、他は折りたたみ。
+// 核（アカウント・再浮上と通知・今日の占い）だけ常時表示、他は折りたたみ。
 // プレミアムはロック行 → アップグレードシート。エクスポートは無料保証(⭐)。
 
 // VAPID公開鍵(base64url) → Uint8Array（applicationServerKey用）
@@ -14,7 +14,7 @@ function urlB64ToUint8(base64) {
 }
 
 // アプリのバージョン。リリース（ソース変更を配布）ごとに patch を上げる。
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.3';
 
 function GearIcon({ size = 21 }) {
   const st = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
@@ -98,12 +98,8 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
   const [perDay, setPerDay] = useState('おまかせ');
   const [notifWindow, setNotifWindow] = useState('深夜帯');
   const [remindDays, setRemindDays] = useState('3日前');
-  const [pasteOnOpen, setPasteOnOpen] = useState(true);
   const [fortuneOn, setFortuneOn] = useState(true);
   const [fortuneTime, setFortuneTime] = useState('朝 8時ごろ');
-  // 折りたたみ内
-  const [shareBtn, setShareBtn] = useState(true);
-  const [screenshotPull, setScreenshotPull] = useState(false);
   const [syncEnabled, setSyncEnabled] = useState(false);   // 端末間同期（Drive）
   const [syncBusy, setSyncBusy] = useState(false);
   const [bmLinks, setBmLinks] = useState(null);            // 横断インポート：解析済みリンク（棚選択待ち）
@@ -129,11 +125,8 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
         if (s.perDay) setPerDay(s.perDay);
         if (s.notifWindow) setNotifWindow(s.notifWindow);
         if (s.remindDays) setRemindDays(s.remindDays);
-        if (typeof s.pasteOnOpen === 'boolean') setPasteOnOpen(s.pasteOnOpen);
         if (typeof s.fortuneOn === 'boolean') setFortuneOn(s.fortuneOn);
         if (s.fortuneTime) setFortuneTime(s.fortuneTime);
-        if (typeof s.shareBtn === 'boolean') setShareBtn(s.shareBtn);
-        if (typeof s.screenshotPull === 'boolean') setScreenshotPull(s.screenshotPull);
         if (typeof s.syncOn === 'boolean') setSyncEnabled(s.syncOn);
       }
     }).catch(() => {}).then(() => setHyd(true));
@@ -142,9 +135,9 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
     if (!hyd) return;
     const st = window.MichaeSStore;
     if (st && st.saveSettings) {
-      st.saveSettings({ resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, syncOn: syncEnabled });
+      st.saveSettings({ resurface, perDay, notifWindow, remindDays, fortuneOn, fortuneTime, syncOn: syncEnabled });
     }
-  }, [hyd, resurface, perDay, notifWindow, remindDays, pasteOnOpen, fortuneOn, fortuneTime, shareBtn, screenshotPull, syncEnabled]);
+  }, [hyd, resurface, perDay, notifWindow, remindDays, fortuneOn, fortuneTime, syncEnabled]);
 
   // ── 端末間同期（Google Drive）操作 ──
   const handleSyncToggle = async (next) => {
@@ -411,23 +404,6 @@ function SettingsPage({ onBack, t, setTweak, onWipeAll, onExport, onImport, open
           <SetRow label="詳細ルール" sub="感覚 × 時間帯 × 場所 × イヤホン" locked={!isPremium} onClick={isPremium ? undefined : () => setPremium(true)}>
             <span className="val-chip dim">{isPremium ? '✦' : 'プレミアム'}</span>
           </SetRow>
-        </SetGroup>
-
-        <SetGroup title="入れる">
-          <SetRow label="起動時に「コピー中」を出す" sub="開いた瞬間、貼るだけにする">
-            <Toggle on={pasteOnOpen} onChange={setPasteOnOpen} />
-          </SetRow>
-          <Fold title="くわしく">
-            <SetRow label="クリップボード読取の許可" sub="OSの設定で管理">
-              <span className="val-chip dim">許可済み</span>
-            </SetRow>
-            <SetRow label="共有ボタン（Android）">
-              <Toggle on={shareBtn} onChange={setShareBtn} />
-            </SetRow>
-            <SetRow label="スクショ吸い上げ">
-              <Toggle on={screenshotPull} onChange={setScreenshotPull} />
-            </SetRow>
-          </Fold>
         </SetGroup>
 
         <SetGroup title="今日の占い">
