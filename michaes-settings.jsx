@@ -14,7 +14,7 @@ function urlB64ToUint8(base64) {
 }
 
 // アプリのバージョン。リリース（ソース変更を配布）ごとに patch を上げる。
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.0.4';
 
 function GearIcon({ size = 21 }) {
   const st = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };

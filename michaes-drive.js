@@ -51,6 +51,11 @@
 
   function ensureToken(interactive) {
     if (token && Date.now() < tokenExp) return Promise.resolve(token);
+    // 非対話（起動時プル・自動push）では絶対に同意ポップアップを出さない。
+    // GISのアクセストークンはページ再読込で消えるため、メモリにトークンが無ければ静かにスキップし、
+    // ユーザーが「今すぐ同期」等を操作した時（interactive=true＝ユーザー操作起点）だけポップアップを出す。
+    // こうしないと、起動のたびにブラウザのポップアップ許可プロンプトが出てしまう。
+    if (!interactive) return Promise.reject(new Error('needs_interactive'));
     var tc = initClient();
     if (!tc) return Promise.reject(new Error('gis_unavailable'));
     if (pending) return Promise.reject(new Error('token_in_progress'));
